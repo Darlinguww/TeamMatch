@@ -1,0 +1,17 @@
+# No commitear datos sensibles aquí. Solo configuración de desarrollo.
+version: '3.9'
+ 
+services:
+  frontend:
+    command: npm run dev -- --host 0.0.0.0
+    environment:
+      - CHOKIDAR_USEPOLLING=true   # hot reload en Windows/Mac con Docker
+ 
+  backend:
+    command: npm run dev
+    environment:
+      - NODE_ENV=development
+ 
+  ai-service:
+    command: npm run dev
+ 
