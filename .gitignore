@@ -5,44 +5,40 @@ node_modules/
 dist/
 build/
 
+# Vite cache
+.vite/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# OS
-.DS_Store
-
-# Editor directories
-.vscode/
-.idea/
 
 # Environment variables
 .env
 .env.local
 .env.*.local
 
-# Cache
-.cache/
-*.tmp
+# OS files
+.DS_Store
+Thumbs.db
 
-# Typescript build files
-*.tsbuildinfo
+# Editor directories
+.vscode/
+.idea/
 
-# Vite / React specific
-*.local
-*.env.*.local
+# Test coverage
 coverage/
 
-# Optional: MacOS Thumbs
+# TypeScript build info
+*.tsbuildinfo
+
+# Optional: lock files (solo si quieres recrearlos)
+# package-lock.json
+# yarn.lock
+
+# Optional: macOS Thumbs and system files
 .AppleDouble
 .LSOverride
-
-# Optional: npm package lock
-package-lock.json
-
-# Optional: Yarn lock (if using Yarn)
-yarn.lock
 
 # Optional: JetBrains / IntelliJ
 *.iml
