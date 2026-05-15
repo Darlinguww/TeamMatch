@@ -1,0 +1,49 @@
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+
+# Editor directories
+.vscode/
+.idea/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Cache
+.cache/
+*.tmp
+
+# Typescript build files
+*.tsbuildinfo
+
+# Vite / React specific
+*.local
+*.env.*.local
+coverage/
+
+# Optional: MacOS Thumbs
+.AppleDouble
+.LSOverride
+
+# Optional: npm package lock
+package-lock.json
+
+# Optional: Yarn lock (if using Yarn)
+yarn.lock
+
+# Optional: JetBrains / IntelliJ
+*.iml
+out/
