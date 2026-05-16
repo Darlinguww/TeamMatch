@@ -1,5 +1,3 @@
-version: '3.9'
- 
 networks:
   teammatch-net:
     driver: bridge
@@ -8,7 +6,8 @@ volumes:
   neo4j_data:
   neo4j_logs:
   neo4j_plugins:
- 
+  backend_node_modules:
+
 services:
   # ─────────────────────────────────────────────
   # NEO4J — Base de datos de grafos

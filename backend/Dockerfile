@@ -1,8 +1,23 @@
 FROM node:24-slim
 WORKDIR /app
-COPY package.json package-lock.json* ./
-# Instalamos con npm (esto creará carpetas reales, no symlinks)
-RUN npm install
+
+# Copiar package files
+COPY package*.json ./
+
+# Instalar dependencias y recompilar
+RUN apt-get update && \
+    apt-get install -y python3 g++ make && \
+    npm install --build-from-source && \
+    apt-get purge -y --auto-remove python3 g++ make && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copiar código fuente
 COPY . .
+
+# Compilar TypeScript
+RUN npm run build
+
 EXPOSE 3000
-CMD ["npm", "run", "dev"]
+
+# Ejecutar aplicación compilada
+CMD ["node", "dist/index.js"]

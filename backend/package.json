@@ -2,20 +2,32 @@
   "name": "teammatch-backend",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js",
-    "test": "vitest"
+    "build": "tsc",
+    "start": "npm run build && node dist/index.js",
+    "dev": "tsx watch index.ts",
+    "test": "vitest",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
     "neo4j-driver": "^5.15.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.2",
+    "@types/node": "^20.10.6",
+    "@types/supertest": "^7.2.0",
     "supertest": "^7.2.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
     "vitest": "^4.1.6"
   }
 }
