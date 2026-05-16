@@ -1,8 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, mockUsers } from './mockData';
 
-interface OnboardingData {
-  userType: 'student' | 'professional' | null;
+interface ProfileUpdate {
   bio: string;
   roleOrProgram: string;
   yearsExperience: number;
@@ -11,6 +10,9 @@ interface OnboardingData {
   hoursPerWeek: number;
   preferredTimes: string[];
   workTypes: string[];
+  userType?: 'student' | 'professional' | null;
+  avatar?: string;
+  name?: string;
 }
 
 interface AuthContextType {
@@ -20,7 +22,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  updateOnboarding: (data: OnboardingData) => Promise<void>;
+  updateOnboarding: (data: ProfileUpdate) => Promise<void>;
+  updateProfile: (data: ProfileUpdate) => Promise<void>;
 }
 
 interface RegisterData {
@@ -29,66 +32,92 @@ interface RegisterData {
   password: string;
 }
 
-// Simulated "registered users" stored in memory (would be backend in production)
-const MOCK_PASSWORD = 'Password1'; // All demo users share this password for simplicity
+const MOCK_PASSWORD = 'Password1';
+const STORAGE_KEY   = 'teammatch_user';
+const USERS_KEY     = 'teammatch_registered_users';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isNewUser, setIsNewUser] = useState(false);
-  const [registeredUsers, setRegisteredUsers] = useState<(User & { password: string })[]>(
-    mockUsers.map(u => ({ ...u, password: MOCK_PASSWORD }))
-  );
-
-  // Persist session in sessionStorage
-  useEffect(() => {
-    const saved = sessionStorage.getItem('teammatch_user');
-    if (saved) {
-      try {
-        setUser(JSON.parse(saved));
-      } catch {
-        sessionStorage.removeItem('teammatch_user');
+  const [registeredUsers, setRegisteredUsers] = useState<(User & { password: string })[]>(() => {
+    // Load persisted registered users so new accounts survive refresh
+    try {
+      const saved = localStorage.getItem(USERS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as (User & { password: string })[];
+        // Merge with mock users (avoid duplicates by email)
+        const mockWithPw = mockUsers.map(u => ({ ...u, password: MOCK_PASSWORD }));
+        const emails = new Set(mockWithPw.map(u => u.email.toLowerCase()));
+        const extra = parsed.filter(u => !emails.has(u.email.toLowerCase()));
+        return [...mockWithPw, ...extra];
       }
+    } catch { /* ignore */ }
+    return mockUsers.map(u => ({ ...u, password: MOCK_PASSWORD }));
+  });
+
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setUser(JSON.parse(saved));
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
 
+  // Persist registered users whenever the list changes
+  useEffect(() => {
+    localStorage.setItem(USERS_KEY, JSON.stringify(registeredUsers));
+  }, [registeredUsers]);
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+
+  const persistUser = (u: User) => {
+    setUser(u);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+  };
+
+  const syncRegisteredUser = (updated: User) => {
+    setRegisteredUsers(prev =>
+      prev.map(u => u.id === updated.id ? { ...u, ...updated } : u)
+    );
+  };
+
+  const buildUpdatedUser = (base: User, data: ProfileUpdate): User => ({
+    ...base,
+    ...(data.name !== undefined ? { name: data.name } : {}),
+    ...(data.avatar !== undefined ? { avatar: data.avatar } : {}),
+    bio:      data.bio,
+    skills:   data.skills as User['skills'],
+    interests: data.interests,
+    experience: data.yearsExperience,
+    availability: {
+      hoursPerWeek:   data.hoursPerWeek,
+      preferredTimes: data.preferredTimes,
+    },
+  });
+
+  // ── auth actions ─────────────────────────────────────────────────────────
+
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // Simulate network delay
     await new Promise(r => setTimeout(r, 800));
-
     const found = registeredUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (!found) {
-      return { success: false, error: 'No existe una cuenta con ese correo electrónico.' };
-    }
-    if (found.password !== password) {
-      return { success: false, error: 'Contraseña incorrecta. Inténtalo de nuevo.' };
-    }
-
+    if (!found) return { success: false, error: 'No existe una cuenta con ese correo electrónico.' };
+    if (found.password !== password) return { success: false, error: 'Contraseña incorrecta. Inténtalo de nuevo.' };
     const { password: _pw, ...userWithoutPassword } = found;
-    setUser(userWithoutPassword);
-    sessionStorage.setItem('teammatch_user', JSON.stringify(userWithoutPassword));
+    persistUser(userWithoutPassword);
     return { success: true };
   };
 
   const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     await new Promise(r => setTimeout(r, 800));
-
     const exists = registeredUsers.find(u => u.email.toLowerCase() === data.email.toLowerCase());
-    if (exists) {
-      return { success: false, error: 'Ya existe una cuenta con ese correo electrónico.' };
-    }
-
-    // Password validation
-    if (data.password.length < 8) {
-      return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
-    }
-    if (!/[A-Z]/.test(data.password)) {
-      return { success: false, error: 'La contraseña debe incluir al menos una letra mayúscula.' };
-    }
-    if (!/[0-9]/.test(data.password)) {
-      return { success: false, error: 'La contraseña debe incluir al menos un número.' };
-    }
+    if (exists) return { success: false, error: 'Ya existe una cuenta con ese correo electrónico.' };
+    if (data.password.length < 8)         return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
+    if (!/[A-Z]/.test(data.password))     return { success: false, error: 'La contraseña debe incluir al menos una letra mayúscula.' };
+    if (!/[0-9]/.test(data.password))     return { success: false, error: 'La contraseña debe incluir al menos un número.' };
 
     const newUser: User & { password: string } = {
       id: `u_${Date.now()}`,
@@ -107,42 +136,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setRegisteredUsers(prev => [...prev, newUser]);
     const { password: _pw, ...userWithoutPassword } = newUser;
-    setUser(userWithoutPassword);
+    persistUser(userWithoutPassword);
     setIsNewUser(true);
-    sessionStorage.setItem('teammatch_user', JSON.stringify(userWithoutPassword));
     return { success: true };
   };
 
-  const updateOnboarding = async (data: OnboardingData): Promise<void> => {
+  const updateOnboarding = async (data: ProfileUpdate): Promise<void> => {
     await new Promise(r => setTimeout(r, 600));
     if (!user) return;
-    const updated: User = {
-      ...user,
-      bio: data.bio,
-      skills: data.skills as User['skills'],
-      interests: data.interests,
-      experience: data.yearsExperience,
-      availability: {
-        hoursPerWeek: data.hoursPerWeek,
-        preferredTimes: data.preferredTimes,
-      },
-    };
-    setUser(updated);
+    const updated = buildUpdatedUser(user, data);
+    persistUser(updated);
+    syncRegisteredUser(updated);
     setIsNewUser(false);
-    sessionStorage.setItem('teammatch_user', JSON.stringify(updated));
-    // Also update in registeredUsers list
-    setRegisteredUsers(prev =>
-      prev.map(u => u.id === updated.id ? { ...u, ...updated } : u)
-    );
+  };
+
+  // updateProfile is the same logic but no isNewUser side-effect
+  const updateProfile = async (data: ProfileUpdate): Promise<void> => {
+    await new Promise(r => setTimeout(r, 400));
+    if (!user) return;
+    const updated = buildUpdatedUser(user, data);
+    persistUser(updated);
+    syncRegisteredUser(updated);
   };
 
   const logout = () => {
     setUser(null);
-    sessionStorage.removeItem('teammatch_user');
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isNewUser, login, register, logout, updateOnboarding }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isNewUser, login, register, logout, updateOnboarding, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

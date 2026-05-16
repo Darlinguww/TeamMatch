@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Network, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
+import { Network, Eye, EyeOff, LogIn, AlertCircle, Sparkles, Users, Zap } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+
+const FEATURES = [
+  { icon: Sparkles, text: 'Motor de emparejamiento con IA' },
+  { icon: Users, text: 'Score de afinidad por proyecto' },
+  { icon: Zap, text: 'Retroalimentación entre equipos' },
+];
 
 export function Login() {
   const navigate = useNavigate();
@@ -15,6 +21,13 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // Trigger entrance animation after mount
+    const t = setTimeout(() => setMounted(true), 50);
+    return () => clearTimeout(t);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,18 +47,46 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Left panel - branding */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 bg-gradient-to-br from-primary via-cyan-500 to-green-500 relative overflow-hidden">
-        {/* Background decoration */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-white" />
-          <div className="absolute bottom-32 right-10 w-48 h-48 rounded-full bg-white" />
-          <div className="absolute top-1/2 left-1/3 w-32 h-32 rounded-full bg-white" />
+    <div className="min-h-screen bg-background flex overflow-hidden">
+
+      {/* ── Left panel ── */}
+      <div
+        className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #16a34a 0%, #0891b2 50%, #06b6d4 100%)' }}
+      >
+        {/* Animated blobs */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div
+            className="absolute w-80 h-80 rounded-full bg-white/10"
+            style={{ top: '-5rem', right: '-5rem', animation: 'float 8s ease-in-out infinite' }}
+          />
+          <div
+            className="absolute w-56 h-56 rounded-full bg-white/10"
+            style={{ bottom: '5rem', left: '-3rem', animation: 'float 10s ease-in-out infinite reverse' }}
+          />
+          <div
+            className="absolute w-36 h-36 rounded-full bg-white/10"
+            style={{ top: '40%', left: '55%', animation: 'float 6s ease-in-out infinite 2s' }}
+          />
+          {/* Floating particles */}
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute w-2 h-2 rounded-full bg-white/30"
+              style={{
+                top: `${15 + i * 14}%`,
+                left: `${10 + i * 12}%`,
+                animation: `float ${4 + i}s ease-in-out infinite ${i * 0.5}s`,
+              }}
+            />
+          ))}
         </div>
 
         <div className="relative z-10 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur">
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur"
+            style={{ animation: 'pulse-slow 3s ease-in-out infinite' }}
+          >
             <Network className="h-7 w-7 text-white" />
           </div>
           <div>
@@ -54,7 +95,7 @@ export function Login() {
           </div>
         </div>
 
-        <div className="relative z-10 space-y-6">
+        <div className="relative z-10 space-y-8">
           <div>
             <h2 className="text-4xl font-bold text-white leading-tight mb-4">
               Forma equipos perfectos con inteligencia artificial
@@ -63,15 +104,17 @@ export function Login() {
               Conecta tus habilidades con proyectos que necesitan exactamente lo que tú ofrecés.
             </p>
           </div>
-          <div className="flex flex-col gap-3">
-            {[
-              'Motor de emparejamiento con IA',
-              'Score de afinidad por proyecto',
-              'Retroalimentación entre equipos',
-            ].map(feat => (
-              <div key={feat} className="flex items-center gap-3">
-                <div className="h-2 w-2 rounded-full bg-white" />
-                <span className="text-white/90 text-sm">{feat}</span>
+          <div className="flex flex-col gap-4">
+            {FEATURES.map((feat, i) => (
+              <div
+                key={feat.text}
+                className="flex items-center gap-3 bg-white/10 backdrop-blur rounded-xl px-4 py-3"
+                style={{ animation: `slideInLeft 0.5s ease-out ${0.2 + i * 0.15}s both` }}
+              >
+                <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                  <feat.icon className="h-4 w-4 text-white" />
+                </div>
+                <span className="text-white/90 text-sm font-medium">{feat.text}</span>
               </div>
             ))}
           </div>
@@ -82,12 +125,18 @@ export function Login() {
         </p>
       </div>
 
-      {/* Right panel - form */}
+      {/* ── Right panel ── */}
       <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
+        <div
+          className="w-full max-w-md transition-all duration-700"
+          style={{
+            opacity: mounted ? 1 : 0,
+            transform: mounted ? 'translateY(0)' : 'translateY(24px)',
+          }}
+        >
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-green-500">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-cyan-500">
               <Network className="h-6 w-6 text-white" />
             </div>
             <div>
@@ -114,7 +163,10 @@ export function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              <div
+                className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                style={{ animation: 'shake 0.4s ease-out' }}
+              >
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 {error}
               </div>
@@ -128,7 +180,7 @@ export function Login() {
                 placeholder="tu@correo.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="h-11"
+                className="h-11 transition-shadow duration-200 focus:shadow-md focus:shadow-primary/10"
                 autoComplete="email"
               />
             </div>
@@ -151,7 +203,7 @@ export function Login() {
                   placeholder="••••••••"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="h-11 pr-10"
+                  className="h-11 pr-10 transition-shadow duration-200 focus:shadow-md focus:shadow-primary/10"
                   autoComplete="current-password"
                 />
                 <button
@@ -167,9 +219,15 @@ export function Login() {
 
             <Button
               type="submit"
-              className="w-full h-11 gap-2 bg-gradient-to-r from-primary to-cyan-500 hover:from-primary/90 hover:to-cyan-500/90 text-white font-medium"
+              className="w-full h-11 gap-2 text-white font-medium relative overflow-hidden group"
+              style={{ background: 'linear-gradient(135deg, #16a34a, #0891b2)' }}
               disabled={loading}
             >
+              {/* Shimmer effect */}
+              <span
+                className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                style={{ backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)' }}
+              />
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -186,12 +244,36 @@ export function Login() {
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
             ¿No tienes una cuenta?{' '}
-            <Link to="/register" className="text-primary font-medium hover:underline">
+            <Link to="/register" className="text-primary font-medium hover:underline transition-colors">
               Regístrate aquí
             </Link>
           </p>
         </div>
       </div>
+
+      {/* Global keyframes */}
+      <style>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          33% { transform: translateY(-18px) rotate(3deg); }
+          66% { transform: translateY(-8px) rotate(-2deg); }
+        }
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        @keyframes slideInLeft {
+          from { opacity: 0; transform: translateX(-20px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-6px); }
+          40% { transform: translateX(6px); }
+          60% { transform: translateX(-4px); }
+          80% { transform: translateX(4px); }
+        }
+      `}</style>
     </div>
   );
 }
