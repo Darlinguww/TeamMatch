@@ -1,12 +1,26 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, mockUsers } from './mockData';
 
+interface OnboardingData {
+  userType: 'student' | 'professional' | null;
+  bio: string;
+  roleOrProgram: string;
+  yearsExperience: number;
+  skills: { id: string; name: string; level: string; category: string }[];
+  interests: string[];
+  hoursPerWeek: number;
+  preferredTimes: string[];
+  workTypes: string[];
+}
+
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isNewUser: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  updateOnboarding: (data: OnboardingData) => Promise<void>;
 }
 
 interface RegisterData {
@@ -22,6 +36,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isNewUser, setIsNewUser] = useState(false);
   const [registeredUsers, setRegisteredUsers] = useState<(User & { password: string })[]>(
     mockUsers.map(u => ({ ...u, password: MOCK_PASSWORD }))
   );
@@ -93,8 +108,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRegisteredUsers(prev => [...prev, newUser]);
     const { password: _pw, ...userWithoutPassword } = newUser;
     setUser(userWithoutPassword);
+    setIsNewUser(true);
     sessionStorage.setItem('teammatch_user', JSON.stringify(userWithoutPassword));
     return { success: true };
+  };
+
+  const updateOnboarding = async (data: OnboardingData): Promise<void> => {
+    await new Promise(r => setTimeout(r, 600));
+    if (!user) return;
+    const updated: User = {
+      ...user,
+      bio: data.bio,
+      skills: data.skills as User['skills'],
+      interests: data.interests,
+      experience: data.yearsExperience,
+      availability: {
+        hoursPerWeek: data.hoursPerWeek,
+        preferredTimes: data.preferredTimes,
+      },
+    };
+    setUser(updated);
+    setIsNewUser(false);
+    sessionStorage.setItem('teammatch_user', JSON.stringify(updated));
+    // Also update in registeredUsers list
+    setRegisteredUsers(prev =>
+      prev.map(u => u.id === updated.id ? { ...u, ...updated } : u)
+    );
   };
 
   const logout = () => {
@@ -103,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isNewUser, login, register, logout, updateOnboarding }}>
       {children}
     </AuthContext.Provider>
   );

@@ -8,18 +8,27 @@ import { MyTeams } from "./components/MyTeams";
 import { Feedback } from "./components/Feedback";
 import { Login } from "./components/Login";
 import { Register } from "./components/Register";
+import { OnboardingWizard } from "./components/OnboardingWizard";
 import { useAuth } from "./lib/authContext";
 import { JSX } from "react";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isNewUser } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (isNewUser) return <Navigate to="/onboarding" replace />;
   return children;
 }
 
 function RequireGuest({ children }: { children: JSX.Element }) {
   const { isAuthenticated } = useAuth();
   if (isAuthenticated) return <Navigate to="/" replace />;
+  return children;
+}
+
+function RequireNewUser({ children }: { children: JSX.Element }) {
+  const { isAuthenticated, isNewUser } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isNewUser) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -31,6 +40,10 @@ export const router = createBrowserRouter([
   {
     path: "/register",
     element: <RequireGuest><Register /></RequireGuest>,
+  },
+  {
+    path: "/onboarding",
+    element: <RequireNewUser><OnboardingWizard /></RequireNewUser>,
   },
   {
     path: "/",
