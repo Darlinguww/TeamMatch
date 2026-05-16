@@ -42,3 +42,18 @@ Thumbs.db
 # TESTS
 # ─────────────────────────────────────────────
 coverage/
+
+# Archivos de entorno (Contienen contraseñas y llaves)
+.env
+*.env
+.env.local
+
+# Dependencias (No se suben porque se instalan con npm install)
+node_modules/
+dist/
+build/
+
+# Archivos de sistema y logs
+npm-debug.log*
+.DS_Store
+Thumbs.db
