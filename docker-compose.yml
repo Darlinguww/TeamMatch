@@ -1,0 +1,115 @@
+networks:
+  teammatch-net:
+    driver: bridge
+ 
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_plugins:
+  backend_node_modules:
+
+services:
+  # ─────────────────────────────────────────────
+  # NEO4J — Base de datos de grafos
+  # ─────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5.26.0-community
+    container_name: teammatch-neo4j
+    ports:
+      - '7474:7474'   # Neo4j Browser (UI)
+      - '7687:7687'   # Bolt protocol (driver)
+    environment:
+      - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
+      - NEO4J_dbms_security_procedures_unrestricted=gds.*
+      - NEO4J_dbms_memory_heap_initial__size=512m
+      - NEO4J_dbms_memory_heap_max__size=1G
+      - NEO4J_dbms_memory_pagecache_size=512m
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - ./neo4j/plugins:/plugins
+      - ./neo4j/init:/docker-entrypoint-initdb.d
+    networks:
+      - teammatch-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "${NEO4J_USER}", "-p", "${NEO4J_PASSWORD}", "RETURN 1"]
+      interval: 20s
+      timeout: 15s
+      retries: 10
+      start_period: 500s
+ 
+  # ─────────────────────────────────────────────
+  # FRONTEND — React + Vite + TypeScript
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: teammatch-frontend
+    ports:
+      - '5173:5173'
+    environment:
+      - VITE_API_URL=${VITE_API_URL}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - teammatch-net
+    restart: unless-stopped
+ 
+  # ─────────────────────────────────────────────
+  # BACKEND — Node.js + Express + TypeScript
+  # ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: teammatch-backend
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${PORT}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - NEO4J_URI=${NEO4J_URI}
+      - NEO4J_USER=${NEO4J_USER}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      - AI_SERVICE_URL=${AI_SERVICE_URL}
+      - MAX_LOGIN_ATTEMPTS=${MAX_LOGIN_ATTEMPTS}
+      - LOGIN_BLOCK_DURATION_MS=${LOGIN_BLOCK_DURATION_MS}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    networks:
+      - teammatch-net
+    restart: unless-stopped
+ 
+  # ─────────────────────────────────────────────
+  # AI SERVICE — Microservicio Gemini (normalización + explicaciones)
+  # ─────────────────────────────────────────────
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: teammatch-ai
+    ports:
+      - '8000:8000'
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
+      - PROCESSING_TIMEOUT_MS=${PROCESSING_TIMEOUT_MS}
+      - NODE_ENV=${NODE_ENV}
+    volumes:
+      - ./ai-service:/app
+    networks:
+      - teammatch-net
+    restart: unless-stopped

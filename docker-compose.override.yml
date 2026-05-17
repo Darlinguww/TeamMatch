@@ -1,0 +1,17 @@
+# No commitear datos sensibles aquí. Solo configuración de desarrollo.
+services:
+
+  backend:
+    command: npm run dev
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    environment:
+      - NODE_ENV=development
+ 
+  ai-service:
+    command: npm run dev
+    volumes:
+      - ./ai-service:/app
+      - /app/node_modules
+ 

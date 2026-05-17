@@ -1,0 +1,143 @@
+name: TeamMatch CI
+
+# Se ejecuta en PRs hacia develop y main,
+# y en push directo a develop y main
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  # ─────────────────────────────────────────────
+  # JOB 1: Lint y Build del Backend
+  # ─────────────────────────────────────────────
+  backend:
+    name: Backend — Lint, Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint (ESLint + TypeScript)
+        run: npm run lint
+
+      - name: Compilar TypeScript
+        run: npm run build
+
+      - name: Ejecutar tests
+        run: npm run test
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-secret-ci-only
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: test-password
+
+  # ─────────────────────────────────────────────
+  # JOB 2: Lint y Build del Frontend
+  # ─────────────────────────────────────────────
+  frontend:
+    name: Frontend — Lint & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build de producción
+        run: npm run build
+        env:
+          VITE_API_URL: http://localhost:3000/api
+
+  # ─────────────────────────────────────────────
+  # JOB 3: Lint y Build del AI Service
+  # ─────────────────────────────────────────────
+  ai-service:
+    name: AI Service — Lint & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./ai-service
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ai-service/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  # ─────────────────────────────────────────────
+  # JOB 4: Verificar que docker-compose es válido
+  # ─────────────────────────────────────────────
+  docker-compose-check:
+    name: Validar docker-compose.yml
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Crear .env de prueba para CI
+        run: |
+          cp .env.example .env
+          sed -i 's/<CAMBIAR_POR_SECRETO_SEGURO>/ci-secret-test/' .env
+          sed -i 's/<CAMBIAR_POR_PASSWORD_SEGURO>/ci-password/' .env
+          sed -i 's/<CAMBIAR_POR_TU_API_KEY>/ci-api-key/' .env
+
+      - name: Validar sintaxis docker-compose
+        run: docker compose config --quiet
+
+  # ─────────────────────────────────────────────
+  # JOB 5: Resumen — bloquea merge si algo falla
+  # ─────────────────────────────────────────────
+  ci-passed:
+    name: ✅ CI Completo
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, ai-service, docker-compose-check]
+    steps:
+      - name: Todos los checks pasaron
+        run: echo "CI exitoso. PR listo para revisión."
