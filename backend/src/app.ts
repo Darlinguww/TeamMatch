@@ -3,9 +3,11 @@ import cors from 'cors';
 import authRoutes, { requireAuth } from './modules/auth/auth.routes.js';
 import availabilityRoutes from './modules/availability/availability.routes.js';
 import profileRoutes from './modules/profile/profile.routes.js';
+import projectsRoutes from './modules/projects/projects.routes.js';
 import skillsRoutes from './modules/skills/skills.routes.js';
+import tasksRoutes from './modules/tasks/tasks.routes.js';
+import teamsRoutes from './modules/teams/teams.routes.js';
 import { errorHandler } from './shared/middlewares/errorHandler.js';
-import projectsRoutes from '../routes/projects.js';
 
 const app: Express = express();
 
@@ -21,6 +23,8 @@ app.use('/api', profileRoutes);
 app.use('/api', skillsRoutes);
 app.use('/api', availabilityRoutes);
 app.use('/projects', projectsRoutes);
+app.use('/tasks', tasksRoutes);
+app.use('/teams', teamsRoutes);
 
 app.get('/api/protected-route', requireAuth, (req, res) => {
   res.status(200).json({ user: req.user });
