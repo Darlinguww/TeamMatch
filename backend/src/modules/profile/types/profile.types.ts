@@ -48,3 +48,28 @@ export interface PublicProfile {
   experience: SkillExperience[];
   availability: AvailabilityDay[];
 }
+
+export interface ProfileSearchAvailabilityFilter {
+  day: Weekday;
+  start: string;
+  end: string;
+}
+
+export interface SearchUsersFilters {
+  skills: string[];
+  minYears: number | null;
+  availability: ProfileSearchAvailabilityFilter | null;
+  limit: number;
+  offset: number;
+}
+
+export interface ProfileSearchMatch {
+  matchingSkills: number;
+  totalMatchingYears: number;
+  availabilityMatched: boolean;
+  score: number;
+}
+
+export interface PublicProfileSearchResult extends PublicProfile {
+  match: ProfileSearchMatch;
+}

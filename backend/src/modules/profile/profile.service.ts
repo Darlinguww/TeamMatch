@@ -1,8 +1,9 @@
 import { BadRequestError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { SearchUsersDto } from './dto/search-users.dto.js';
 import { UpdateProfileAvailabilityDto } from './dto/update-profile-availability.dto.js';
 import { UpdateProfileExperienceDto } from './dto/update-profile-experience.dto.js';
 import { ProfileRepository } from './repositories/profile.repository.js';
-import { PublicProfile } from './types/profile.types.js';
+import { PublicProfile, PublicProfileSearchResult } from './types/profile.types.js';
 
 export class ProfileService {
   public constructor(private readonly profileRepository: ProfileRepository) {}
@@ -41,5 +42,9 @@ export class ProfileService {
     }
 
     return profile;
+  }
+
+  public async searchUsers(filters: SearchUsersDto): Promise<PublicProfileSearchResult[]> {
+    return this.profileRepository.searchPublicProfiles(filters);
   }
 }

@@ -1,10 +1,23 @@
-import { AvailabilityDay, PublicProfile, SkillExperience, TimeSlot, WEEKDAYS, Weekday } from '../types/profile.types.js';
+import {
+  AvailabilityDay,
+  ProfileSearchMatch,
+  PublicProfile,
+  PublicProfileSearchResult,
+  SkillExperience,
+  TimeSlot,
+  WEEKDAYS,
+  Weekday
+} from '../types/profile.types.js';
 
 export interface PublicProfileRecord {
   userId: unknown;
   user: unknown;
   experience: unknown;
   availability?: unknown;
+}
+
+export interface PublicProfileSearchRecord extends PublicProfileRecord {
+  match: unknown;
 }
 
 function serializeExperienceItem(item: unknown): SkillExperience | null {
@@ -83,5 +96,32 @@ export function serializePublicProfile(record: PublicProfileRecord): PublicProfi
     user: typeof record.user === 'string' ? record.user : '',
     experience,
     availability
+  };
+}
+
+function serializeSearchMatch(match: unknown): ProfileSearchMatch {
+  if (typeof match !== 'object' || match === null || Array.isArray(match)) {
+    return {
+      matchingSkills: 0,
+      totalMatchingYears: 0,
+      availabilityMatched: false,
+      score: 0
+    };
+  }
+
+  const rawMatch = match as Record<string, unknown>;
+
+  return {
+    matchingSkills: Number(rawMatch.matchingSkills ?? 0),
+    totalMatchingYears: Number(rawMatch.totalMatchingYears ?? 0),
+    availabilityMatched: rawMatch.availabilityMatched === true,
+    score: Number(rawMatch.score ?? 0)
+  };
+}
+
+export function serializePublicProfileSearchResult(record: PublicProfileSearchRecord): PublicProfileSearchResult {
+  return {
+    ...serializePublicProfile(record),
+    match: serializeSearchMatch(record.match)
   };
 }
