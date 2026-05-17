@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import { driver, findUserByEmail } from '../utils/db';
-import { createToken } from '../middleware/auth';
+import { driver, findUserByEmail } from '../utils/db.js';
+import { createToken } from '../middleware/auth.js';
 
 const router = Router();
 

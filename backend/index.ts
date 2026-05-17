@@ -1,38 +1,10 @@
-// Backend principal de TeamMatch
-import express, { Express } from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import authRoutes from './routes/auth';
-import projectsRoutes from './routes/projects';
+import app from './src/app.js';
+import { env } from './src/config/env.js';
 
-dotenv.config();
-
-const app: Express = express();
-const PORT: string | number = process.env.PORT || 3000;
-
-declare global {
-  namespace Express {
-    interface Request {
-      user?: { userId: string; email: string };
-    }
-  }
+if (env.nodeEnv !== 'test') {
+  app.listen(env.port, (): void => {
+    console.log(`Backend running on port ${env.port}`);
+  });
 }
-
-app.use(cors());
-app.use(express.json());
-
-app.get('/', (_req, res) => {
-  res.json({ status: 'ok', service: 'TeamMatch backend' });
-});
-
-// Rutas de autenticación
-app.use('/api/auth', authRoutes);
-
-// Rutas de proyectos
-app.use('/projects', projectsRoutes);
-
-app.listen(PORT, (): void => {
-  console.log(`🚀 Backend corriendo en el puerto ${PORT}`);
-});
 
 export default app;
