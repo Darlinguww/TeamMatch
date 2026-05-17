@@ -7,7 +7,6 @@ import projectsRoutes from './routes/projects';
 import tasksRoutes from './routes/tasks';
 import teamsRoutes from './routes/teams';
 import profileRoutes from './routes/profile';
-import { profile } from 'console';
 
 dotenv.config();
 

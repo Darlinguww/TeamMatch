@@ -66,15 +66,12 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
          summary: $summary,
          createdAt: $createdAt
        })
-       MERGE (leader)-[:PERTENECE_A]->(project)
+       MERGE (leader)-[membership:PERTENECE_A]->(project)
+       SET membership.rol = 'lider'
        WITH project
-       UNWIND $roles AS roleInput
-       CREATE (role:Rol { roleId: randomUUID(), name: roleInput.role })
-       MERGE (project)-[:TIENE_ROL]->(role)
-       WITH role, roleInput
-       UNWIND roleInput.skills AS skillName
+       UNWIND $skills AS skillName
        MATCH (skill:Habilidad { name: skillName })
-       MERGE (role)-[:REQUIERE]->(skill)
+       MERGE (project)-[:REQUIERE]->(skill)
        RETURN project.projectId AS projectId`,
       {
         leaderId: req.user!.userId,
@@ -83,7 +80,7 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
         description: typeof description === 'string' ? description.trim() : '',
         summary,
         createdAt,
-        roles: normalizedRoles
+        skills: allSkills
       }
     );
 
@@ -112,27 +109,22 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const result = await session.run(
       `MATCH (u:Usuario {userId: $userId})-[:PERTENECE_A]->(p:Proyecto)
-       OPTIONAL MATCH (p)<-[:PERTENECE_A]-(leader:Usuario)
-       OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
-       OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
-       WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
-       WITH p, leader, collect(DISTINCT { role: r.name, skills: skills }) AS roles
+       OPTIONAL MATCH (leader:Usuario)-[:PERTENECE_A {rol: 'lider'}]->(p)
+       OPTIONAL MATCH (p)-[:REQUIERE]->(s:Habilidad)
+       WITH p, leader, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
        RETURN p.projectId AS projectId,
               p.title AS title,
               p.summary AS summary,
               p.createdAt AS createdAt,
               leader.userId AS leaderId,
               leader.email AS leaderEmail,
-              roles
+              skills
        ORDER BY p.createdAt DESC`,
       { userId }
     );
 
     const projects = result.records.map((record) => {
-      const rawRoles = record.get('roles') as Array<{ role: string; skills: string[] }>;
-      const roles = Array.isArray(rawRoles)
-        ? rawRoles.filter((role) => role.role != null)
-        : [];
+      const skills = record.get('skills') as string[];
       return {
         id: record.get('projectId'),
         title: record.get('title'),
@@ -142,7 +134,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
           userId: record.get('leaderId'),
           email: record.get('leaderEmail')
         },
-        roles
+        roles: skills.length > 0 ? [{ role: 'requerido', skills }] : []
       };
     });
 
@@ -168,11 +160,9 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const result = await session.run(
       `MATCH (u:Usuario {userId: $userId})-[:PERTENECE_A]->(p:Proyecto {projectId: $projectId})
-       OPTIONAL MATCH (p)<-[:PERTENECE_A]-(leader:Usuario)
-       OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
-       OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
-       WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
-       WITH p, leader, collect(DISTINCT { role: r.name, skills: skills }) AS roles
+       OPTIONAL MATCH (leader:Usuario)-[:PERTENECE_A {rol: 'lider'}]->(p)
+       OPTIONAL MATCH (p)-[:REQUIERE]->(s:Habilidad)
+       WITH p, leader, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
        RETURN p.projectId AS projectId,
               p.title AS title,
               p.description AS description,
@@ -180,7 +170,7 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
               p.createdAt AS createdAt,
               leader.userId AS leaderId,
               leader.email AS leaderEmail,
-              roles`,
+              skills`,
       { userId, projectId: id }
     );
 
@@ -189,10 +179,7 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
     }
 
     const record = result.records[0];
-    const rawRoles = record.get('roles') as Array<{ role: string; skills: string[] }>;
-    const roles = Array.isArray(rawRoles)
-      ? rawRoles.filter((role) => role.role != null)
-      : [];
+    const skills = record.get('skills') as string[];
 
     return res.json({
       id: record.get('projectId'),
@@ -204,7 +191,7 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
         userId: record.get('leaderId'),
         email: record.get('leaderEmail')
       },
-      roles
+      roles: skills.length > 0 ? [{ role: 'requerido', skills }] : []
     });
   } finally {
     await session.close();
@@ -422,6 +409,57 @@ router.post('/:taskId/reviews', requireAuth, async (req: Request, res: Response)
   } catch (error: any) {
     console.error('POST /:taskId/reviews', error);
     return res.status(500).json({ error: 'Error al crear la reseña' });
+  } finally {
+    await session.close();
+  }
+});
+
+
+
+// ------- Pipeline de matching de candidatos -------
+// Fase 1 - Filtrado estructural: devolver candidatos que tienen al menos una de las habilidades del proyecto
+router.get('/:id/match/phase1', requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const session = driver.session();
+
+  try {
+    // Obtener skills del proyecto y el líder (creator)
+    const metaResult = await session.run(
+      `MATCH (p:Proyecto {projectId: $projectId})
+       OPTIONAL MATCH (leader:Usuario)-[:PERTENECE_A {rol: 'lider'}]->(p)
+       OPTIONAL MATCH (p)-[:REQUIERE]->(s:Habilidad)
+       WITH leader, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
+       RETURN leader.userId AS leaderId, skills`,
+      { projectId: id }
+    );
+
+    if (metaResult.records.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const record = metaResult.records[0];
+    const leaderId = record.get('leaderId');
+    const projectSkills = record.get('skills') || [];
+
+    if (!Array.isArray(projectSkills) || projectSkills.length === 0) {
+      // No hay habilidades requeridas -> no hay candidatos por skills (resultado válido)
+      return res.json({ candidates: [] });
+    }
+
+    // Buscar usuarios que tengan al menos una de las habilidades del proyecto, excluyendo al líder
+    const candidatesResult = await session.run(
+      `UNWIND $skills AS skillName
+       MATCH (candidate:Usuario)-[:TIENE_HABILIDAD]->(h:Habilidad {name: skillName})
+       WHERE $leaderId IS NULL OR candidate.userId <> $leaderId
+       RETURN DISTINCT candidate.userId AS userId`,
+      { skills: projectSkills, leaderId }
+    );
+
+    const candidates = candidatesResult.records.map((r) => r.get('userId'));
+    return res.json({ candidates });
+  } catch (error: any) {
+    console.error('GET /projects/:id/match/phase1', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
   } finally {
     await session.close();
   }
