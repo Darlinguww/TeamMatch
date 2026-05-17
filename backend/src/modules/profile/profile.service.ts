@@ -1,4 +1,5 @@
 import { BadRequestError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { UpdateProfileAvailabilityDto } from './dto/update-profile-availability.dto.js';
 import { UpdateProfileExperienceDto } from './dto/update-profile-experience.dto.js';
 import { ProfileRepository } from './repositories/profile.repository.js';
 import { PublicProfile } from './types/profile.types.js';
@@ -8,6 +9,16 @@ export class ProfileService {
 
   public async updateExperience(userId: string, input: UpdateProfileExperienceDto): Promise<PublicProfile> {
     const profile = await this.profileRepository.replaceUserExperience(userId, input.experience);
+
+    if (!profile) {
+      throw new NotFoundError('User profile not found');
+    }
+
+    return profile;
+  }
+
+  public async updateAvailability(userId: string, input: UpdateProfileAvailabilityDto): Promise<PublicProfile> {
+    const profile = await this.profileRepository.replaceUserAvailability(userId, input.availability);
 
     if (!profile) {
       throw new NotFoundError('User profile not found');

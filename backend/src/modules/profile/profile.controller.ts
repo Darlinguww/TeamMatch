@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { UnauthorizedError } from '../../shared/errors/HttpErrors.js';
 import { asyncHandler } from '../../shared/middlewares/asyncHandler.js';
+import { UpdateProfileAvailabilityDto } from './dto/update-profile-availability.dto.js';
 import { UpdateProfileExperienceDto } from './dto/update-profile-experience.dto.js';
 import { ProfileService } from './profile.service.js';
 
@@ -15,6 +16,19 @@ export class ProfileController {
     const profile = await this.profileService.updateExperience(
       req.user.userId,
       req.body as UpdateProfileExperienceDto
+    );
+
+    res.status(200).json({ profile });
+  });
+
+  public updateAvailability = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) {
+      throw new UnauthorizedError('Unauthorized');
+    }
+
+    const profile = await this.profileService.updateAvailability(
+      req.user.userId,
+      req.body as UpdateProfileAvailabilityDto
     );
 
     res.status(200).json({ profile });

@@ -10,8 +10,41 @@ export interface SkillExperience {
   level: string | null;
 }
 
+export const WEEKDAYS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday'
+] as const;
+
+export type Weekday = typeof WEEKDAYS[number];
+
+export interface TimeSlotInput {
+  start: string;
+  end: string;
+}
+
+export interface AvailabilityDayInput {
+  day: Weekday;
+  timeSlots: TimeSlotInput[];
+}
+
+export interface TimeSlot {
+  start: string;
+  end: string;
+}
+
+export interface AvailabilityDay {
+  day: Weekday;
+  timeSlots: TimeSlot[];
+}
+
 export interface PublicProfile {
   userId: string;
   user: string;
   experience: SkillExperience[];
+  availability: AvailabilityDay[];
 }
