@@ -4,6 +4,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
 import projectsRoutes from './routes/projects';
+import tasksRoutes from './routes/tasks';
+import teamsRoutes from './routes/teams';
+import profileRoutes from './routes/profile';
 
 dotenv.config();
 
@@ -30,6 +33,14 @@ app.use('/api/auth', authRoutes);
 
 // Rutas de proyectos
 app.use('/projects', projectsRoutes);
+
+// Rutas de equipos
+app.use('/teams', teamsRoutes);
+
+// Rutas de tareas
+app.use('/tasks', tasksRoutes);
+
+app.use('/profile', profileRoutes);
 
 app.listen(PORT, (): void => {
   console.log(`🚀 Backend corriendo en el puerto ${PORT}`);

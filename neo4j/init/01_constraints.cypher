@@ -14,6 +14,3 @@ CREATE CONSTRAINT skill_name_unique IF NOT EXISTS
 FOR (s:Habilidad)
 REQUIRE s.name IS UNIQUE;
 
-CREATE CONSTRAINT role_id_unique IF NOT EXISTS
-FOR (r:Rol)
-REQUIRE r.roleId IS UNIQUE;
