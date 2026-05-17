@@ -6,6 +6,8 @@ import authRoutes from './routes/auth';
 import projectsRoutes from './routes/projects';
 import tasksRoutes from './routes/tasks';
 import teamsRoutes from './routes/teams';
+import profileRoutes from './routes/profile';
+import { profile } from 'console';
 
 dotenv.config();
 
@@ -38,6 +40,8 @@ app.use('/teams', teamsRoutes);
 
 // Rutas de tareas
 app.use('/tasks', tasksRoutes);
+
+app.use('/profile', profileRoutes);
 
 app.listen(PORT, (): void => {
   console.log(`🚀 Backend corriendo en el puerto ${PORT}`);
