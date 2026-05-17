@@ -24,7 +24,10 @@ export class ProfileRepository {
          CALL {
            WITH u
            UNWIND $experience AS item
-           MERGE (skill:Habilidad {name: item.skillName})
+           MERGE (skill:Habilidad {normalizedName: item.normalizedSkillName})
+           ON CREATE SET skill.name = item.skillName,
+                         skill.createdAt = $updatedAt
+           SET skill.updatedAt = $updatedAt
            MERGE (u)-[experienceRel:TIENE_EXPERIENCIA_EN]->(skill)
            SET experienceRel.yearsOfExperience = item.yearsOfExperience,
                experienceRel.level = item.level,
@@ -32,7 +35,14 @@ export class ProfileRepository {
            RETURN count(experienceRel) AS updatedRelationships
          }
          RETURN u.userId AS userId`,
-        { userId, experience, updatedAt }
+        {
+          userId,
+          experience: experience.map((item) => ({
+            ...item,
+            normalizedSkillName: item.skillName.trim().toLowerCase()
+          })),
+          updatedAt
+        }
       );
 
       userExists = result.records.length > 0;

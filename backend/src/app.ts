@@ -1,7 +1,9 @@
 import express, { Express } from 'express';
 import cors from 'cors';
 import authRoutes, { requireAuth } from './modules/auth/auth.routes.js';
+import availabilityRoutes from './modules/availability/availability.routes.js';
 import profileRoutes from './modules/profile/profile.routes.js';
+import skillsRoutes from './modules/skills/skills.routes.js';
 import { errorHandler } from './shared/middlewares/errorHandler.js';
 import projectsRoutes from '../routes/projects.js';
 
@@ -15,7 +17,9 @@ app.get('/', (_req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
-app.use(profileRoutes);
+app.use('/api', profileRoutes);
+app.use('/api', skillsRoutes);
+app.use('/api', availabilityRoutes);
 app.use('/projects', projectsRoutes);
 
 app.get('/api/protected-route', requireAuth, (req, res) => {

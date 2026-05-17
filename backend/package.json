@@ -5,9 +5,10 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "lint": "tsc --noEmit",
     "start": "npm run build && node dist/index.js",
     "dev": "tsx watch index.ts",
-    "test": "vitest",
+    "test": "vitest --run",
     "clean": "rm -rf dist"
   },
   "dependencies": {
