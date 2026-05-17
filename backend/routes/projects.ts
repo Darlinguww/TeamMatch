@@ -2,9 +2,11 @@ import { Router, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { driver } from '../utils/db';
 import { requireAuth } from '../middleware/auth';
+import { isUserInProjectByTask, isUserInProject } from './tasks';
 
 const router = Router();
 
+// Crear un nuevo proyecto
 router.post('/', requireAuth, async (req: Request, res: Response) => {
   const { title, description, roles } = req.body ?? {};
   if (!title || typeof title !== 'string' || !title.trim()) {
@@ -97,12 +99,20 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.get('/', async (_req: Request, res: Response) => {
+
+// Obtener todos los proyectos del usuario autenticado
+router.get('/', requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const session = driver.session();
 
   try {
     const result = await session.run(
-      `MATCH (p:Proyecto)<-[:PERTENECE_A]-(leader:Usuario)
+      `MATCH (u:Usuario {userId: $userId})-[:PERTENECE_A]->(p:Proyecto)
+       OPTIONAL MATCH (p)<-[:PERTENECE_A]-(leader:Usuario)
        OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
        OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
        WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
@@ -114,7 +124,8 @@ router.get('/', async (_req: Request, res: Response) => {
               leader.userId AS leaderId,
               leader.email AS leaderEmail,
               roles
-       ORDER BY p.createdAt DESC`
+       ORDER BY p.createdAt DESC`,
+      { userId }
     );
 
     const projects = result.records.map((record) => {
@@ -144,13 +155,20 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 });
 
-router.get('/:id', async (req: Request, res: Response) => {
+// Obtener detalles de un proyecto específico
+router.get('/:id', requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
+  const userId = req.user?.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const session = driver.session();
 
   try {
     const result = await session.run(
-      `MATCH (p:Proyecto {projectId: $projectId})<-[:PERTENECE_A]-(leader:Usuario)
+      `MATCH (u:Usuario {userId: $userId})-[:PERTENECE_A]->(p:Proyecto {projectId: $projectId})
+       OPTIONAL MATCH (p)<-[:PERTENECE_A]-(leader:Usuario)
        OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
        OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
        WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
@@ -163,7 +181,7 @@ router.get('/:id', async (req: Request, res: Response) => {
               leader.userId AS leaderId,
               leader.email AS leaderEmail,
               roles`,
-      { projectId: id }
+      { userId, projectId: id }
     );
 
     if (result.records.length === 0) {
@@ -188,6 +206,222 @@ router.get('/:id', async (req: Request, res: Response) => {
       },
       roles
     });
+  } finally {
+    await session.close();
+  }
+});
+
+
+// Crear una tarea dentro de un proyecto específico
+router.post('/:projectId/tasks', requireAuth, async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  const { title, description, userAsigned } = req.body ?? {};
+
+  // Verificar que el usuario actual hace parte del proyecto
+  const userId = req.user?.userId;
+  if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+  }else {
+      const hasAccess = await isUserInProject(userId, projectId);
+      if (!hasAccess) {
+          return res.status(403).json({ error: 'Forbidden' });
+      }
+  }
+
+  // Validación básica del título
+  if (!title || typeof title !== 'string' || !title.trim()) {
+    return res.status(400).json({ error: 'El título de la tarea es requerido' });
+  }
+
+  const session = driver.session();
+
+  try {
+    // Verificar que el proyecto existe
+    const projectResult = await session.run(
+      'MATCH (p:Proyecto {projectId: $projectId}) RETURN p.projectId AS projectId',
+      { projectId }
+    );
+    if (projectResult.records.length === 0) {
+      return res.status(404).json({ error: 'El proyecto no existe' });
+    }
+
+    // Crear la tarea
+    const taskId = randomUUID();
+    const createdAt = new Date().toISOString();
+    const taskDescription = description && typeof description === 'string'
+      ? description.trim()
+      : '';
+
+    let query = `MATCH (project:Proyecto {projectId: $projectId})
+                 CREATE (task:Tarea {
+                   taskId: $taskId,
+                   title: $title,
+                   description: $description,
+                   createdAt: $createdAt,
+                   status: 'pendiente'
+                 })
+                 MERGE (project)-[:CONTIENE]->(task)`;
+
+    const params: any = {
+      projectId,
+      taskId,
+      title: title.trim(),
+      description: taskDescription,
+      createdAt
+    };
+
+    // Si hay un usuario asignado, crear la relación
+    if (userAsigned && typeof userAsigned === 'string') {
+      query += ` WITH task
+                 MATCH (user:Usuario {userId: $userId})
+                 MERGE (user)-[:ASIGNADO_A]->(task)`;
+      params.userId = userAsigned;
+    }
+
+    query += ` RETURN task.taskId AS taskId`;
+
+    const result = await session.run(query, params);
+
+    if (result.records.length === 0) {
+      return res.status(500).json({ error: 'Error al crear la tarea' });
+    }
+
+    return res.status(201).json({
+      taskId: result.records[0].get('taskId'),
+      title: title.trim(),
+      description: taskDescription,
+      createdAt,
+      status: 'pendiente',
+      userAsigned: userAsigned || null
+    });
+  } catch (error: any) {
+    console.error('POST /:projectId/tasks', error);
+    return res.status(500).json({ error: 'Error al crear la tarea' });
+  } finally {
+    await session.close();
+  }
+});
+
+
+// Obtener todas las tareas de un proyecto específico, con opción de filtrar por estado
+router.get('/:projectId/tasks', requireAuth, async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  const statusFilter = req.query.status as string | undefined;
+  const session = driver.session();
+
+  // Verificar que el usuario actual hace parte del proyecto
+  const userId = req.user?.userId;
+    if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }else {
+        const hasAccess = await isUserInProject(userId, projectId);
+        if (!hasAccess) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    }
+
+
+  try {
+    const projectResult = await session.run(
+      'MATCH (p:Proyecto {projectId: $projectId}) RETURN p.projectId AS projectId',
+      { projectId }
+    );
+    if (projectResult.records.length === 0) {
+      return res.status(404).json({ error: 'El proyecto no existe' });
+    }
+    let query = `MATCH (project:Proyecto {projectId: $projectId})-[:CONTIENE]->(task:Tarea)
+                 OPTIONAL MATCH (task)<-[:ASIGNADO_A]-(user:Usuario)`;
+    const params: any = { projectId };
+
+    // Si se proporciona un filtro de estado, agregarlo a la consulta
+    if (statusFilter && typeof statusFilter === 'string') {
+      query += ' WHERE task.status = $status';
+      params.status = statusFilter;
+    }
+
+    query += ` RETURN task.taskId AS taskId,
+                        task.title AS title,
+                        task.description AS description,
+                        task.createdAt AS createdAt,
+                        task.status AS status,
+                        user.userId AS userId,
+                        user.email AS userEmail
+                 ORDER BY task.createdAt DESC`;
+
+    const result = await session.run(query, params);
+
+    return res.status(200).json(result.records.map((record) => {
+      return {
+        taskId: record.get('taskId'),
+        title: record.get('title'),
+        description: record.get('description'),
+        createdAt: record.get('createdAt'),
+        status: record.get('status'),
+        userId: record.get('userId'),
+        userEmail: record.get('userEmail')
+      };
+    }));
+  } catch (error: any) {
+    console.error('GET /:projectId/tasks', error);
+    return res.status(500).json({ error: 'Error al obtener las tareas' });
+  } finally {
+    await session.close();
+  }
+});
+
+
+// Evaluar tareas
+router.post('/:taskId/reviews', requireAuth, async (req: Request, res: Response) => {
+  const { taskId } = req.params;
+  const { rating, comment } = req.body ?? {};
+  const reviewerId = req.user?.userId;
+  const session = driver.session();
+
+  if (!reviewerId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (typeof rating !== 'number' || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'La calificación debe ser un número entre 1 y 5' });
+  }
+
+  const hasAccess = await isUserInProjectByTask(reviewerId, taskId);
+  if (!hasAccess) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    const taskResult = await session.run(
+      'MATCH (t:Tarea {taskId: $taskId}) RETURN t.taskId AS taskId',
+      { taskId }
+    );
+    if (taskResult.records.length === 0) {
+      return res.status(404).json({ error: 'La tarea no existe' });
+    }
+    const result = await session.run(
+      `MATCH (u:Usuario {userId: $userId})
+      MATCH (t:Tarea {taskId: $taskId})
+
+      MERGE (u)-[r:EVALUÓ]->(t)
+
+      SET r.puntaje = $score,
+          r.feedback = $feedback,
+          r.createdAt = datetime()
+
+      RETURN {
+        userId: u.userId,
+        taskId: t.taskId,
+        score: r.puntaje,
+        feedback: r.feedback,
+        createdAt: r.createdAt
+      } AS review`,
+      { taskId, userId: reviewerId, score: rating, feedback: comment || '' }
+    );
+
+    return res.status(201).json(result.records[0].get('review'));
+  } catch (error: any) {
+    console.error('POST /:taskId/reviews', error);
+    return res.status(500).json({ error: 'Error al crear la reseña' });
   } finally {
     await session.close();
   }
