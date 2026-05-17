@@ -180,6 +180,16 @@ export function Profile() {
                     <Edit2 className="h-3.5 w-3.5 text-white" />
                   </label>
                   <input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                  {local.avatar && (
+                    <button
+                      type="button"
+                      title="Eliminar foto"
+                      onClick={() => setLocal(p => p ? { ...p, avatar: undefined } : p)}
+                      className="absolute top-0 right-0 bg-destructive p-1 rounded-full shadow hover:bg-destructive/80 transition-colors"
+                    >
+                      <X className="h-3 w-3 text-white" />
+                    </button>
+                  )}
                 </>
               )}
             </div>
