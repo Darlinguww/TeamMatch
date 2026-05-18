@@ -11,6 +11,8 @@ services:
  
   ai-service:
     command: npm run dev
+    ports:
+      - '3001:3001'
     environment:
       - PORT=3001
     volumes:

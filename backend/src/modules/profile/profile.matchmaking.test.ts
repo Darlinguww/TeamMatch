@@ -20,7 +20,11 @@ class FakeProfileRepository {
           totalMatchingYears: 8,
           availabilityMatched: true,
           redundancyPenalty: 0,
-          score: 330
+          score: 330,
+          reputationScore: 0,
+          reputationWeightApplied: 0,
+          isNeutralScore: false,
+          domainWeights: {}
         }
       },
       {
@@ -34,7 +38,11 @@ class FakeProfileRepository {
           totalMatchingYears: 1,
           availabilityMatched: true,
           redundancyPenalty: 0,
-          score: 160
+          score: 160,
+          reputationScore: 0,
+          reputationWeightApplied: 0,
+          isNeutralScore: false,
+          domainWeights: {}
         }
       }
     ];
@@ -82,7 +90,11 @@ describe('pipeline de matchmaking de perfiles', () => {
       totalMatchingYears: 8,
       availabilityMatched: true,
       redundancyPenalty: 0,
-      score: 330
+      score: 330,
+      reputationScore: 0,
+      reputationWeightApplied: 0,
+      isNeutralScore: false,
+      domainWeights: {}
     });
     expect(bestMatch.match.score).toBe(
       (bestMatch.match.matchingSkills * 100) +
@@ -133,7 +145,11 @@ describe('pipeline de matchmaking de perfiles', () => {
         totalMatchingYears: index % 8,
         availabilityMatched: true,
         redundancyPenalty: 0,
-        score: 150 + index
+        score: 150 + index,
+        reputationScore: 0,
+        reputationWeightApplied: 0,
+        isNeutralScore: false,
+        domainWeights: {}
       }
     }));
     class PerformanceRepository {

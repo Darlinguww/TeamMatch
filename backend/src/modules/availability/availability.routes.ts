@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { requireAuth } from '../auth/auth.routes.js';
+import { availabilityParseRateLimiter } from '../../shared/middlewares/rateLimit.js';
 import { AvailabilityController } from './availability.controller.js';
 import { AvailabilityParserService } from './availability-parser.service.js';
 import { GeminiAvailabilityParser } from './gemini-availability.parser.js';
@@ -11,6 +13,11 @@ const availabilityParserService = new AvailabilityParserService(
 );
 const availabilityController = new AvailabilityController(availabilityParserService);
 
-router.post('/availability/parse', availabilityController.parse);
+router.post(
+  '/availability/parse',
+  requireAuth,
+  availabilityParseRateLimiter,
+  availabilityController.parse
+);
 
 export default router;

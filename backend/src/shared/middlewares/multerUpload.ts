@@ -8,8 +8,11 @@ const MAX_FILE_BYTES = 4 * 1024 * 1024; // 4 MB
 
 const storage = multer.memoryStorage();
 
-function pdfFileFilter(_req: unknown, file: Express.Multer.File, cb: multer.FileFilterCallback) {
-  if (!file) return cb(null, true);
+function pdfFileFilter(_req: unknown, file: Express.Multer.File, cb: multer.FileFilterCallback): void {
+  if (!file) {
+    cb(null, true);
+    return;
+  }
 
   if (file.mimetype === 'application/pdf') {
     cb(null, true);
@@ -18,28 +21,36 @@ function pdfFileFilter(_req: unknown, file: Express.Multer.File, cb: multer.File
   }
 }
 
-async function validatePdfFile(req: Request, _res: Response, next: NextFunction): Promise<void> {
-  const file = (req as any).file as Express.Multer.File | undefined;
+export interface UploadedPdfFile extends Express.Multer.File {
+  fileId?: string;
+}
+
+export async function validatePdfFile(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  const file = (req as Request & { file?: UploadedPdfFile }).file;
 
   if (!file) {
     next();
     return;
   }
 
-  const fileType = await fileTypeFromBuffer(file.buffer);
+  const detectedType = await fileTypeFromBuffer(file.buffer);
 
-  if (!fileType || fileType.mime !== 'application/pdf' || fileType.ext !== 'pdf') {
+  if (!detectedType || detectedType.mime !== 'application/pdf' || detectedType.ext !== 'pdf') {
     next(new BadRequestError('Invalid PDF file'));
     return;
   }
 
   const fileId = randomUUID();
-  (file as any).fileId = fileId;
-  (file as any).originalname = `${fileId}.pdf`;
+  file.fileId = fileId;
+  file.originalname = `${fileId}.pdf`;
   next();
 }
 
-const uploadSingleFile = multer({ storage, limits: { fileSize: MAX_FILE_BYTES }, fileFilter: pdfFileFilter }).single('file');
+const uploadSingleFile = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_BYTES },
+  fileFilter: pdfFileFilter
+}).single('file');
 
-export { validatePdfFile, uploadSingleFile };
+export { uploadSingleFile };
 export default uploadSingleFile;

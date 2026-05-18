@@ -51,6 +51,7 @@ else
   echo "     - JWT_SECRET        (genera con: openssl rand -hex 64)"
   echo "     - NEO4J_PASSWORD    (elige una contraseña segura)"
   echo "     - GEMINI_API_KEY    (obtén en: https://aistudio.google.com)"
+  echo "     - AZURE_OPENAI_*    (endpoint, API key, deployment y versión)"
   echo ""
   read -p "  Presiona Enter cuando hayas configurado el .env..."
 fi

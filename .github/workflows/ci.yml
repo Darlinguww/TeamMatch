@@ -47,6 +47,8 @@ jobs:
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
           NEO4J_PASSWORD: test-password
+          AI_SERVICE_URL: http://ai-service:3001
+          INTERNAL_AI_SERVICE_TOKEN: ci-internal-token
 
   # ─────────────────────────────────────────────
   # JOB 2: Lint y Build del Frontend
@@ -98,7 +100,7 @@ jobs:
   # JOB 3: Lint y Build del AI Service
   # ─────────────────────────────────────────────
   ai-service:
-    name: AI Service — Lint & Build
+    name: AI Service — Lint, Build & Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -124,6 +126,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Ejecutar tests
+        run: npm run test
+        env:
+          GEMINI_API_KEY: ci-gemini-key
+          INTERNAL_AI_SERVICE_TOKEN: ci-internal-token
+
   # ─────────────────────────────────────────────
   # JOB 4: Verificar que docker-compose es válido
   # ─────────────────────────────────────────────
@@ -141,6 +149,8 @@ jobs:
           sed -i 's/<CAMBIAR_POR_SECRETO_SEGURO>/ci-secret-test/' .env
           sed -i 's/<CAMBIAR_POR_PASSWORD_SEGURO>/ci-password/' .env
           sed -i 's/<CAMBIAR_POR_TU_API_KEY>/ci-api-key/' .env
+          sed -i 's/<CAMBIAR_POR_TOKEN_INTERNO>/ci-internal-token/' .env
+          sed -i 's/<CAMBIAR_POR_SECRETO_GDS>/ci-gds-secret/' .env
 
       - name: Validar sintaxis docker-compose
         run: docker compose config --quiet

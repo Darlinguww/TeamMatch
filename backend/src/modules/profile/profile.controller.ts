@@ -49,16 +49,15 @@ export class ProfileController {
     res.status(200).json({ profile });
   });
 
-  
   public suggestSkills = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     if (!req.user) {
       throw new UnauthorizedError('Unauthorized');
     }
 
     const text = (req.body && (req.body.text || req.body.description)) as string | undefined;
-    const file = (req as any).file as Express.Multer.File | undefined;
+    const file = (req as Request & { file?: Express.Multer.File }).file;
 
-    if (!text && !file) {
+    if (!text?.trim() && !file) {
       throw new BadRequestError('Either text or a PDF file is required');
     }
 

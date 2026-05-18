@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { matchTeams, processSkills } from '../services/gemini.service.js';
+import { validateProcessSkillsText, ValidationError } from '../services/skills/skills.validation.js';
 import type { Profile, ProjectRequirement } from '../types/ai.types.js';
 
 const router = Router();
@@ -50,14 +51,20 @@ router.post(
   asyncHandler(async (req, res) => {
     const { text } = req.body as { text?: unknown };
 
-    if (!isNonEmptyString(text)) {
-      res.status(400).json({
-        error: 'El campo "text" es obligatorio y debe ser una cadena no vacía.',
-      });
-      return;
+    let sanitizedText: string;
+
+    try {
+      sanitizedText = validateProcessSkillsText(text);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+
+      throw error;
     }
 
-    const skills = await processSkills(text.trim());
+    const skills = await processSkills(sanitizedText);
     res.json({ skills });
   }),
 );

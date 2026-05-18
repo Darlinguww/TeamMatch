@@ -30,15 +30,15 @@ export class ConflictError extends AppError {
   }
 }
 
-export class BadGatewayError extends AppError {
-  public constructor(message = 'Bad gateway', details?: ErrorDetails) {
-    super(message, 502, 'BAD_GATEWAY', details);
-  }
-}
-
 export class UnprocessableEntityError extends AppError {
   public constructor(message = 'Unprocessable entity', details?: ErrorDetails) {
     super(message, 422, 'UNPROCESSABLE_ENTITY', details);
+  }
+}
+
+export class BadGatewayError extends AppError {
+  public constructor(message = 'Bad gateway', details?: ErrorDetails) {
+    super(message, 502, 'BAD_GATEWAY', details);
   }
 }
 

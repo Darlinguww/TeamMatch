@@ -19,41 +19,14 @@ describe('API HTTP con Supertest', () => {
     });
   });
 
-  it('devuelve fallback manual vacio cuando Gemini no esta disponible', async () => {
+  it('exige autenticacion para parsear disponibilidad', async () => {
     const response = await request(app)
       .post('/api/availability/parse')
       .send({ text: 'viernes de 8 a 10' })
-      .expect(200);
-
-    expect(response.body).toEqual({
-      source: 'manual',
-      availability: []
-    });
-  });
-
-  it('devuelve error uniforme cuando el texto de disponibilidad falta', async () => {
-    const response = await request(app)
-      .post('/api/availability/parse')
-      .send({})
-      .expect(400);
-
-    expect(response.body).toMatchObject({
-      error: {
-        code: 'BAD_REQUEST',
-        message: 'Availability text is required'
-      }
-    });
-  });
-
-  it('rechaza textos de disponibilidad demasiado largos', async () => {
-    const response = await request(app)
-      .post('/api/availability/parse')
-      .send({ text: 'x'.repeat(1001) })
-      .expect(400);
+      .expect(401);
 
     expect(response.body.error).toMatchObject({
-      code: 'BAD_REQUEST',
-      message: 'Availability text must be 1000 characters or fewer'
+      code: 'UNAUTHORIZED'
     });
   });
 

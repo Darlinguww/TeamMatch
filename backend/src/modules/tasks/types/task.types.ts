@@ -34,3 +34,41 @@ export interface TaskReview {
   feedback: string;
   createdAt: string;
 }
+
+export type TaskReviewDecision = 'approved' | 'rejected';
+
+export interface TaskWorkflowSummary {
+  taskId: string;
+  title: string;
+  status: string;
+  previousStatus: string | null;
+  projectId: string;
+  updatedAt: string | null;
+}
+
+export interface TaskNotificationSummary {
+  notificationId: string;
+  type: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+  recipientUserId: string;
+}
+
+export interface TaskLeaderReviewSummary {
+  eventId: string;
+  decision: TaskReviewDecision;
+  comment: string | null;
+  reviewedAt: string;
+  reviewedBy: string;
+}
+
+export interface UpdateTaskWorkflowStatusResult {
+  task: TaskWorkflowSummary;
+  notification: TaskNotificationSummary | null;
+}
+
+export interface ReviewTaskWorkflowResult {
+  task: TaskWorkflowSummary;
+  review: TaskLeaderReviewSummary;
+}

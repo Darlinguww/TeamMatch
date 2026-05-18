@@ -1,6 +1,7 @@
 import { getAzureOpenAIClient } from '../llm/azure-openai.client.js';
 import { aiConfig } from '../../config/ai.config.js';
 import { SYSTEM_PROMPT, buildUserPrompt } from './matchmaking.prompts.js';
+import { validateMatchmakingResult } from './matchmaking.validation.js';
 import type {
   CandidateProfile,
   ProjectRequirements,
@@ -38,12 +39,12 @@ export async function runMatchmaking(
   try {
     parsed = JSON.parse(rawContent) as { proposals: TeamProposal[] };
   } catch {
-    throw new Error(`Respuesta de Azure OpenAI no es JSON válido: ${rawContent}`);
+    throw new Error('Respuesta de Azure OpenAI no es JSON valido');
   }
 
   return {
     projectId: project.projectId,
-    proposals: parsed.proposals,
+    proposals: validateMatchmakingResult(parsed).proposals,
     generatedAt: new Date().toISOString(),
   };
 }
