@@ -7,30 +7,18 @@ import { Avatar } from './ui/avatar';
 import { Progress } from './ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { 
-  ArrowLeft,
-  Users,
-  Clock,
-  Target,
-  Sparkles,
-  UserPlus,
-  Star,
-  Calendar,
-  CheckCircle2
+  ArrowLeft, Users, Clock, Target, Sparkles,
+  UserPlus, Star, Calendar, CheckCircle2
 } from 'lucide-react';
-import { 
-  mockProjects, 
-  mockUsers, 
-  mockTeamMembers, 
-  mockTasks,
-  currentUser,
-  generateTeamSuggestions 
-} from '../lib/mockData';
+import { mockProjects, mockUsers, mockTeamMembers, mockTasks } from '../lib/mockData';
+import { TeamProposals } from './TeamProposals';
+import { useAuth } from '../lib/authContext';
 
 export function ProjectDetails() {
   const { id } = useParams();
+  const { user } = useAuth();
   const project = mockProjects.find(p => p.id === id);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [teamSuggestion, setTeamSuggestion] = useState<any>(null);
 
   if (!project) {
     return (
@@ -58,14 +46,8 @@ export function ProjectDetails() {
   const completedTasks = projectTasks.filter(t => t.status === 'completed').length;
   const progress = projectTasks.length > 0 ? (completedTasks / projectTasks.length) * 100 : 0;
 
-  const isUserInTeam = teamMembers.some(tm => tm.userId === currentUser.id);
+  const isUserInTeam = teamMembers.some(tm => tm.userId === user?.id);
   const spotsLeft = project.teamSize - project.currentTeamSize;
-
-  const handleGenerateSuggestions = () => {
-    const suggestion = generateTeamSuggestions(project.id);
-    setTeamSuggestion(suggestion);
-    setShowSuggestions(true);
-  };
 
   const difficultyColors = {
     easy: 'bg-green-100 text-green-700',
@@ -169,7 +151,7 @@ export function ProjectDetails() {
           <TabsTrigger value="team">Equipo</TabsTrigger>
           <TabsTrigger value="roles">Roles Requeridos</TabsTrigger>
           <TabsTrigger value="skills">Habilidades</TabsTrigger>
-          {project.leaderId === currentUser.id && (
+          {project.leaderId === user?.id && (
             <TabsTrigger value="suggestions">
               <Sparkles className="h-4 w-4 mr-2" />
               Sugerencias IA
@@ -312,111 +294,9 @@ export function ProjectDetails() {
           </Card>
         </TabsContent>
 
-        {project.leaderId === currentUser.id && (
+        {project.leaderId === user?.id && (
           <TabsContent value="suggestions" className="space-y-4">
-            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-green-500/5">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  Motor de Emparejamiento con IA (LLM/SLM)
-                </CardTitle>
-                <CardDescription>
-                  Sistema inteligente que analiza el grafo Neo4j y aplica reglas de negocio mediante IA
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {!showSuggestions ? (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-lg bg-white/50 border">
-                      <h4 className="font-medium mb-2 flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-primary" />
-                        ¿Cómo funciona el motor de IA?
-                      </h4>
-                      <ul className="space-y-2 text-sm text-muted-foreground">
-                        <li className="flex items-start gap-2">
-                          <span className="text-primary font-bold">1.</span>
-                          <span>Consulta el grafo Neo4j para recuperar perfiles con habilidades normalizadas</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-primary font-bold">2.</span>
-                          <span>Construye un contexto con: habilidades, experiencia, disponibilidad y retroalimentación</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-primary font-bold">3.</span>
-                          <span>Envía el contexto al modelo LLM/SLM (Gemini) para evaluar combinaciones</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-primary font-bold">4.</span>
-                          <span>Aplica reglas de negocio: complementariedad, disponibilidad, experiencia e historial</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-primary font-bold">5.</span>
-                          <span>Retorna propuestas de equipos con scores de afinidad y justificaciones</span>
-                        </li>
-                      </ul>
-                    </div>
-                    <div className="text-center py-8">
-                      <Button size="lg" onClick={handleGenerateSuggestions}>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Ejecutar Motor de IA
-                      </Button>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        El sistema procesará perfiles del grafo y generará equipos óptimos
-                      </p>
-                    </div>
-                  </div>
-                ) : teamSuggestion && (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">Score de Afinidad</h4>
-                        <span className="text-2xl font-bold text-primary">{teamSuggestion.affinityScore}%</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-3">{teamSuggestion.reasoning}</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Complementariedad</p>
-                          <Progress value={teamSuggestion.complementarity} />
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Disponibilidad</p>
-                          <Progress value={teamSuggestion.availability} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <h4 className="font-medium">Miembros Sugeridos</h4>
-                      {teamSuggestion.members.map((member: any) => (
-                        <div key={member.id} className="p-4 rounded-lg border hover:bg-accent/50 transition-colors">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3 flex-1">
-                              <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center">
-                                <span className="text-primary font-medium">
-                                  {member.name.split(' ').map((n: string) => n[0]).join('')}
-                                </span>
-                              </div>
-                              <div className="flex-1">
-                                <h5 className="font-medium">{member.name}</h5>
-                                <p className="text-sm text-muted-foreground mb-2">{member.bio}</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {member.skills.slice(0, 4).map((skill: any) => (
-                                    <Badge key={skill.id} variant="outline" className="text-xs">
-                                      {skill.name}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                            <Button size="sm">Invitar</Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <TeamProposals project={project} />
           </TabsContent>
         )}
       </Tabs>

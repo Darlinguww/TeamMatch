@@ -48,8 +48,11 @@ export function Layout() {
               </div>
               {/* User avatar + name */}
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-cyan-500 flex items-center justify-center">
-                  <span className="text-xs font-bold text-white">{initials}</span>
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-cyan-500 flex items-center justify-center overflow-hidden shrink-0">
+                  {(user as any)?.avatar
+                    ? <img src={(user as any).avatar} alt="Avatar" className="h-full w-full object-cover" />
+                    : <span className="text-xs font-bold text-white">{initials}</span>
+                  }
                 </div>
                 <span className="text-sm font-medium hidden sm:block">{user?.name.split(' ')[0]}</span>
               </div>

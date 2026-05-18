@@ -36,7 +36,7 @@ export function Profile() {
     skills:       (authUser.skills ?? []) as Skill[],
     interests:    authUser.interests ?? [],
     availability: authUser.availability ?? { hoursPerWeek: 0, preferredTimes: [] },
-    avatar:       (authUser as any).avatar as string | undefined,
+    avatar:       (authUser as any).avatar ?? null,  // null means no avatar
   } : null;
 
   const [local, setLocal] = useState(makeLocal);
@@ -60,7 +60,7 @@ export function Profile() {
     setSaving(true);
     await updateProfile({
       name:           local.name,
-      avatar:         local.avatar,
+      avatar:         local.avatar ?? null,
       bio:            local.bio,
       roleOrProgram:  "",
       yearsExperience: local.experience,
@@ -76,10 +76,13 @@ export function Profile() {
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setLocal(p => p ? { ...p, avatar: url } : p);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target?.result as string;
+      setLocal(p => p ? { ...p, avatar: base64 } : p);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleAddSkill = () => {
@@ -169,7 +172,7 @@ export function Profile() {
             <div className="relative shrink-0">
               <div className="h-24 w-24 rounded-full bg-gradient-to-br from-primary to-cyan-500 flex items-center justify-center overflow-hidden">
                 {local.avatar
-                  ? <img src={local.avatar} alt="Avatar" className="h-full w-full object-cover" />
+                  ? <img src={local.avatar as string} alt="Avatar" className="h-full w-full object-cover" />
                   : <span className="text-3xl font-bold text-white select-none">
                       {local.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase() || "?"}
                     </span>}
@@ -184,7 +187,7 @@ export function Profile() {
                     <button
                       type="button"
                       title="Eliminar foto"
-                      onClick={() => setLocal(p => p ? { ...p, avatar: undefined } : p)}
+                      onClick={() => setLocal(p => p ? { ...p, avatar: null } : p)}
                       className="absolute top-0 right-0 bg-destructive p-1 rounded-full shadow hover:bg-destructive/80 transition-colors"
                     >
                       <X className="h-3 w-3 text-white" />
