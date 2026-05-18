@@ -11,6 +11,8 @@ services:
  
   ai-service:
     command: npm run dev
+    environment:
+      - PORT=3001
     volumes:
       - ./ai-service:/app
       - /app/node_modules

@@ -90,7 +90,7 @@ echo "╠═══════════════════════�
 echo "║  Frontend:    http://localhost:5173                   ║"
 echo "║  Backend API: http://localhost:3000/api               ║"
 echo "║  Neo4j UI:    http://localhost:7474                   ║"
-echo "║  AI Service:  http://localhost:8000                   ║"
+echo "║  AI Service:  http://localhost:3001                   ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 echo "  Comandos útiles:"

@@ -101,8 +101,9 @@ services:
       dockerfile: Dockerfile
     container_name: teammatch-ai
     ports:
-      - '8000:8000'
+      - '3001:3001'
     environment:
+      - PORT=3001
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL}
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
