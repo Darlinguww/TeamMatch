@@ -321,6 +321,91 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     }
   }
 
+  public async findProjectLeader(projectId: string): Promise<string | null> {
+    const session = driver.session();
+    try {
+      const result = await session.run(
+        `MATCH (leader:Usuario)-[rel:PERTENECE_A {rol: 'lider'}]->(p:Proyecto {projectId: $projectId})
+         RETURN leader.userId AS leaderId
+         LIMIT 1`,
+        { projectId }
+      );
+
+      if (!result.records[0]) return null;
+      return String(result.records[0].get('leaderId'));
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async setProjectStatusAndFeedback(projectId: string, status: string, feedbackEnabled: boolean, feedbackStart: string | null, feedbackEnd: string | null): Promise<void> {
+    const session = driver.session();
+    try {
+      await session.run(
+        `MATCH (p:Proyecto {projectId: $projectId})
+         SET p.status = $status,
+             p.feedbackEnabled = $feedbackEnabled,
+             p.feedbackStart = $feedbackStart,
+             p.feedbackEnd = $feedbackEnd,
+             p.updatedAt = $updatedAt`,
+        {
+          projectId,
+          status,
+          feedbackEnabled,
+          feedbackStart,
+          feedbackEnd,
+          updatedAt: new Date().toISOString()
+        }
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async isUserMemberOfProject(userId: string, projectId: string): Promise<boolean> {
+    const session = driver.session();
+    try {
+      const result = await session.run(
+        `MATCH (:Usuario {userId: $userId})-[rel:PERTENECE_A]->(p:Proyecto {projectId: $projectId}) RETURN count(rel) AS c`,
+        { userId, projectId }
+      );
+      const count = result.records[0]?.get('c');
+      return Number(count ?? 0) > 0;
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async hasFeedbackBetweenUsers(projectId: string, fromUserId: string, toUserId: string): Promise<boolean> {
+    const session = driver.session();
+    try {
+      const result = await session.run(
+        `MATCH (from:Usuario {userId: $fromUserId})-[f:EVALUA {projectId: $projectId}]->(to:Usuario {userId: $toUserId}) RETURN count(f) AS c`,
+        { projectId, fromUserId, toUserId }
+      );
+      const count = result.records[0]?.get('c');
+      return Number(count ?? 0) > 0;
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async createFeedbackRelationship(projectId: string, fromUserId: string, toUserId: string, score: number, comment: string | null, createdAt: string): Promise<void> {
+    const session = driver.session();
+    try {
+      await session.run(
+        `MATCH (from:Usuario {userId: $fromUserId}), (to:Usuario {userId: $toUserId}), (p:Proyecto {projectId: $projectId})
+         MERGE (from)-[f:EVALUA {projectId: $projectId}]->(to)
+         SET f.score = $score,
+             f.comment = $comment,
+             f.createdAt = $createdAt`,
+        { projectId, fromUserId, toUserId, score, comment, createdAt }
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
   public async rebuildSemanticIndex(input: {
     similarityCutoff: number;
     topK: number;

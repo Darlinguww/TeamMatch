@@ -48,6 +48,7 @@ router.put(
 );
 router.post('/profile/skills', requireAuth, upload, validatePdfFile, profileController.suggestSkills);
 router.get('/users/search', validateSearchUsersQuery, profileController.searchUsers);
+router.get('/users/:id/reputation', profileController.getUserReputation);
 router.get('/users/:id/profile', profileController.getPublicProfile);
 
 export default router;
