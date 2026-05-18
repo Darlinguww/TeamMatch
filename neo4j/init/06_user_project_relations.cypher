@@ -7,14 +7,14 @@ MATCH (p1:Proyecto {proyectoId: 'prj_001'})
 MATCH (p2:Proyecto {proyectoId: 'prj_002'})
 
 // 2. Crear las relaciones :PERTENECE_A asignando el atributo 'rol' oficial (Líder / Miembro)
-// Para el Proyecto 1: Daniel es el Líder del equipo y Andrea es Miembro
+
 MERGE (u1)-[r1:PERTENECE_A]->(p1)
 ON CREATE SET r1.rol = 'Líder';
 
 MERGE (u2)-[r2:PERTENECE_A]->(p1)
 ON CREATE SET r2.rol = 'Miembro';
 
-// Para el Proyecto 2: Nicolas es el Líder y Daniel entra como Miembro
+
 MERGE (u3)-[r3:PERTENECE_A]->(p2)
 ON CREATE SET r3.rol = 'Líder';
 
