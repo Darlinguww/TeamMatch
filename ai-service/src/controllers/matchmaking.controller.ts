@@ -30,7 +30,7 @@ export async function generateTeamProposals(req: Request, res: Response): Promis
     res.status(200).json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error interno del servidor';
-    console.error('[Matchmaking] Error:', message);
-    res.status(500).json({ error: message });
+    console.error('[Matchmaking] Error inesperado:', message);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 }
