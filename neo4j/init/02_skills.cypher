@@ -1,18 +1,17 @@
-// Cargar catálogo inicial de habilidades con categorías oficiales (SCRUM-143/144)
+// Cargar catálogo inicial de habilidades (SCRUM-143) - Atributos oficiales: nombre, es_tecnica
 UNWIND [
-  {nombre: 'Python', categoria: 'técnica'},
-  {nombre: 'JavaScript', categoria: 'técnica'},
-  {nombre: 'TypeScript', categoria: 'técnica'},
-  {nombre: 'Node.js', categoria: 'técnica'},
-  {nombre: 'React', categoria: 'técnica'},
-  {nombre: 'Neo4j', categoria: 'técnica'},
-  {nombre: 'Git', categoria: 'técnica'},
-  {nombre: 'Liderazgo', categoria: 'blanda'},
-  {nombre: 'Resolución de conflictos', categoria: 'blanda'},
-  {nombre: 'Metodologías Ágiles', categoria: 'blanda'},
-  {nombre: 'Gestión de Proyectos', categoria: 'dominio'},
-  {nombre: 'Análisis de Negocio', categoria: 'dominio'}
+  {nombre: 'Python', es_tecnica: true},
+  {nombre: 'JavaScript', es_tecnica: true},
+  {nombre: 'TypeScript', es_tecnica: true},
+  {nombre: 'Node.js', es_tecnica: true},
+  {nombre: 'React', es_tecnica: true},
+  {nombre: 'Neo4j', es_tecnica: true},
+  {nombre: 'Git', es_tecnica: true},
+  {nombre: 'Liderazgo', es_tecnica: false},
+  {nombre: 'Resolución de conflictos', es_tecnica: false},
+  {nombre: 'Metodologías Ágiles', es_tecnica: false},
+  {nombre: 'Gestión de Proyectos', es_tecnica: false},
+  {nombre: 'Análisis de Negocio', es_tecnica: false}
 ] AS hab
 MERGE (s:Habilidad {nombre: hab.nombre})
-ON CREATE SET s.categoria = hab.categoria, s.nombreNormalizado = hab.nombre
-ON MATCH SET s.categoria = hab.categoria;
+ON CREATE SET s.es_tecnica = hab.es_tecnica;
