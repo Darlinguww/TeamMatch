@@ -9,6 +9,8 @@ function isRecord(payload: unknown): payload is Record<string, unknown> {
   return typeof payload === 'object' && payload !== null && !Array.isArray(payload);
 }
 
+const ALLOWED_LEVELS = new Set(['beginner', 'intermediate', 'advanced', 'expert']);
+
 function validateExperienceItem(item: unknown, index: number, seenSkills: Set<string>): {
   value: SkillExperienceInput | null;
   issues: ValidationIssue[];
@@ -44,10 +46,17 @@ function validateExperienceItem(item: unknown, index: number, seenSkills: Set<st
   if (item.level !== undefined) {
     if (typeof item.level !== 'string') {
       issues.push({ field: `experience.${index}.level`, message: 'Level must be a string when provided' });
-    } else if (item.level.trim().length > 50) {
-      issues.push({ field: `experience.${index}.level`, message: 'Level must be 50 characters or fewer' });
     } else if (item.level.trim()) {
-      level = item.level.trim();
+      const normalizedLevel = item.level.trim().toLowerCase();
+
+      if (!ALLOWED_LEVELS.has(normalizedLevel)) {
+        issues.push({
+          field: `experience.${index}.level`,
+          message: 'Level must be one of: beginner, intermediate, advanced, expert'
+        });
+      } else {
+        level = normalizedLevel;
+      }
     }
   }
 

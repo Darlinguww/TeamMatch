@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { loginRateLimiter } from '../../shared/middlewares/rateLimit.js';
 import { validateDto } from '../../shared/middlewares/validateDto.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
@@ -20,7 +21,7 @@ const jwtAuth = new JwtAuthMiddleware(userRepository);
 export const requireAuth = jwtAuth.authenticate;
 
 router.post('/register', validateDto(validateRegisterDto), authController.register);
-router.post('/login', validateDto(validateLoginDto), authController.login);
+router.post('/login', loginRateLimiter, validateDto(validateLoginDto), authController.login);
 router.get('/me', requireAuth, (req, res) => {
   res.status(200).json({ user: req.user });
 });

@@ -47,6 +47,7 @@ export interface PublicProfile {
   user: string;
   experience: SkillExperience[];
   availability: AvailabilityDay[];
+  skills: string[];
 }
 
 export interface ProfileSearchAvailabilityFilter {
@@ -63,11 +64,18 @@ export interface SearchUsersFilters {
   offset: number;
 }
 
+export type ProfileSearchDomainWeights = Record<string, number>;
+
 export interface ProfileSearchMatch {
   matchingSkills: number;
   totalMatchingYears: number;
   availabilityMatched: boolean;
+  redundancyPenalty: number;
   score: number;
+  reputationScore: number;
+  reputationWeightApplied: number;
+  isNeutralScore: boolean;
+  domainWeights: ProfileSearchDomainWeights;
 }
 
 export interface PublicProfileSearchResult extends PublicProfile {

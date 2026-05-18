@@ -30,18 +30,17 @@ export class LoginAttemptService {
   }
 
   public async recordFailedAttempt(user: UserEntity): Promise<FailedLoginResult> {
-    const nextFailedAttempts = user.failedLoginAttempts + 1;
-    const shouldLockAccount = nextFailedAttempts >= env.maxLoginAttempts;
-    const lockedUntil = shouldLockAccount
-      ? new Date(Date.now() + env.loginBlockDurationMs).toISOString()
-      : null;
-
-    await this.loginAttemptRepository.updateFailedAttempt(user.userId, nextFailedAttempts, lockedUntil);
+    const lockedUntilWhenBlocked = new Date(Date.now() + env.loginBlockDurationMs).toISOString();
+    const state = await this.loginAttemptRepository.incrementFailedAttempt(
+      user.userId,
+      env.maxLoginAttempts,
+      lockedUntilWhenBlocked
+    );
 
     return {
-      failedLoginAttempts: nextFailedAttempts,
-      lockedUntil,
-      isLocked: shouldLockAccount
+      failedLoginAttempts: state.failedLoginAttempts,
+      lockedUntil: state.lockedUntil,
+      isLocked: state.failedLoginAttempts >= env.maxLoginAttempts && state.lockedUntil !== null
     };
   }
 

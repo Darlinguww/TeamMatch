@@ -1,13 +1,16 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { requireAuth } from '../auth/auth.routes.js';
 import { BadRequestError } from '../../shared/errors/HttpErrors.js';
+import { suggestSkillsRateLimiter } from '../../shared/middlewares/rateLimit.js';
 import { validateDto } from '../../shared/middlewares/validateDto.js';
 import { validateSearchUsersDto } from './dto/search-users.dto.js';
 import { validateUpdateProfileAvailabilityDto } from './dto/update-profile-availability.dto.js';
 import { validateUpdateProfileExperienceDto } from './dto/update-profile-experience.dto.js';
+import { validateUpdateProfileSkillsDto } from './dto/update-profile-skills.dto.js';
 import { ProfileController } from './profile.controller.js';
 import { ProfileService } from './profile.service.js';
 import { ProfileRepository } from './repositories/profile.repository.js';
+import upload, { validatePdfFile } from '../../shared/middlewares/multerUpload.js';
 
 const router = Router();
 const profileRepository = new ProfileRepository();
@@ -37,6 +40,20 @@ router.put(
   requireAuth,
   validateDto(validateUpdateProfileAvailabilityDto),
   profileController.updateAvailability
+);
+router.put(
+  '/profile/skills',
+  requireAuth,
+  validateDto(validateUpdateProfileSkillsDto),
+  profileController.updateSkills
+);
+router.post(
+  '/profile/skills',
+  requireAuth,
+  suggestSkillsRateLimiter,
+  upload,
+  validatePdfFile,
+  profileController.suggestSkills
 );
 router.get('/users/search', validateSearchUsersQuery, profileController.searchUsers);
 router.get('/users/:id/profile', profileController.getPublicProfile);

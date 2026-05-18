@@ -27,22 +27,36 @@ export class LoginAttemptRepository {
     }
   }
 
-  public async updateFailedAttempt(userId: string, failedLoginAttempts: number, lockedUntil: string | null): Promise<void> {
+  public async incrementFailedAttempt(
+    userId: string,
+    maxLoginAttempts: number,
+    lockedUntilWhenBlocked: string
+  ): Promise<LoginAttemptState> {
     const session = driver.session();
 
     try {
-      await session.run(
+      const result = await session.run(
         `MATCH (u:Usuario {userId: $userId})
-         SET u.failedLoginAttempts = $failedLoginAttempts,
+         WITH u, coalesce(u.failedLoginAttempts, 0) + 1 AS nextFailedLoginAttempts
+         SET u.failedLoginAttempts = nextFailedLoginAttempts,
              u.lastFailedLoginAt = $lastFailedLoginAt,
-             u.lockedUntil = $lockedUntil`,
+             u.lockedUntil = CASE
+               WHEN nextFailedLoginAttempts >= $maxLoginAttempts THEN $lockedUntilWhenBlocked
+               ELSE null
+             END
+         RETURN u.failedLoginAttempts AS failedLoginAttempts,
+                u.lockedUntil AS lockedUntil`,
         {
           userId,
-          failedLoginAttempts,
-          lockedUntil,
+          maxLoginAttempts,
+          lockedUntilWhenBlocked,
           lastFailedLoginAt: new Date().toISOString()
         }
       );
+
+      return result.records.length > 0
+        ? mapLoginAttemptState(result.records[0])
+        : { failedLoginAttempts: 0, lockedUntil: null };
     } finally {
       await session.close();
     }

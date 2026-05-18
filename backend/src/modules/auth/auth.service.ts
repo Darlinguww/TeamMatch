@@ -31,12 +31,20 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(input.password, 10);
 
-    await this.userRepository.create({
-      userId: randomUUID(),
-      user: input.user,
-      email: input.email,
-      passwordHash
-    });
+    try {
+      await this.userRepository.create({
+        userId: randomUUID(),
+        user: input.user,
+        email: input.email,
+        passwordHash
+      });
+    } catch (error) {
+      if (isNeo4jConstraintError(error)) {
+        throw new ConflictError('User already exists');
+      }
+
+      throw error;
+    }
 
     return { message: 'Usuario registrado' };
   }
@@ -91,4 +99,16 @@ export class AuthService {
       lockedUntil: null
     };
   }
+}
+
+function isNeo4jConstraintError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown };
+  const code = typeof candidate.code === 'string' ? candidate.code : '';
+  const message = typeof candidate.message === 'string' ? candidate.message : '';
+
+  return code.includes('Constraint') || message.includes('constraint');
 }

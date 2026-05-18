@@ -13,6 +13,7 @@ export interface PublicProfileRecord {
   userId: unknown;
   user: unknown;
   experience: unknown;
+  skills?: unknown;
   availability?: unknown;
 }
 
@@ -90,13 +91,51 @@ export function serializePublicProfile(record: PublicProfileRecord): PublicProfi
       .map(serializeAvailabilityDay)
       .filter((item): item is AvailabilityDay => item !== null)
     : [];
+  const skills = Array.isArray(record.skills)
+    ? record.skills.filter((skill): skill is string => typeof skill === 'string' && Boolean(skill.trim()))
+    : [];
 
   return {
     userId: String(record.userId),
     user: typeof record.user === 'string' ? record.user : '',
     experience,
-    availability
+    availability,
+    skills
   };
+}
+
+function serializeDomainWeights(domainWeights: unknown): ProfileSearchMatch['domainWeights'] {
+  if (Array.isArray(domainWeights)) {
+    return domainWeights.reduce<ProfileSearchMatch['domainWeights']>((weights, item) => {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        return weights;
+      }
+
+      const rawItem = item as Record<string, unknown>;
+      const domain = typeof rawItem.domain === 'string' ? rawItem.domain : '';
+      const weight = Number(rawItem.weight ?? 0);
+
+      if (domain && Number.isFinite(weight) && weight > 0) {
+        weights[domain] = weight;
+      }
+
+      return weights;
+    }, {});
+  }
+
+  if (typeof domainWeights !== 'object' || domainWeights === null) {
+    return {};
+  }
+
+  return Object.entries(domainWeights as Record<string, unknown>).reduce<ProfileSearchMatch['domainWeights']>((weights, [domain, value]) => {
+    const weight = Number(value ?? 0);
+
+    if (domain && Number.isFinite(weight) && weight > 0) {
+      weights[domain] = weight;
+    }
+
+    return weights;
+  }, {});
 }
 
 function serializeSearchMatch(match: unknown): ProfileSearchMatch {
@@ -105,7 +144,12 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
       matchingSkills: 0,
       totalMatchingYears: 0,
       availabilityMatched: false,
-      score: 0
+      redundancyPenalty: 0,
+      score: 0,
+      reputationScore: 0,
+      reputationWeightApplied: 0,
+      isNeutralScore: false,
+      domainWeights: {}
     };
   }
 
@@ -115,7 +159,12 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
     matchingSkills: Number(rawMatch.matchingSkills ?? 0),
     totalMatchingYears: Number(rawMatch.totalMatchingYears ?? 0),
     availabilityMatched: rawMatch.availabilityMatched === true,
-    score: Number(rawMatch.score ?? 0)
+    redundancyPenalty: Number(rawMatch.redundancyPenalty ?? 0),
+    score: Number(rawMatch.score ?? 0),
+    reputationScore: Number(rawMatch.reputationScore ?? 0),
+    reputationWeightApplied: Number(rawMatch.reputationWeightApplied ?? 0),
+    isNeutralScore: rawMatch.isNeutralScore === true,
+    domainWeights: serializeDomainWeights(rawMatch.domainWeights)
   };
 }
 

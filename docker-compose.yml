@@ -75,12 +75,21 @@ services:
       - PORT=${PORT}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - CORS_ORIGIN=${CORS_ORIGIN}
       - NEO4J_URI=${NEO4J_URI}
       - NEO4J_USER=${NEO4J_USER}
       - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL}
       - AI_SERVICE_URL=${AI_SERVICE_URL}
+      - INTERNAL_AI_SERVICE_TOKEN=${INTERNAL_AI_SERVICE_TOKEN}
+      - GDS_REBUILD_SECRET=${GDS_REBUILD_SECRET}
+      - SKILLS_ADMIN_EMAILS=${SKILLS_ADMIN_EMAILS}
       - MAX_LOGIN_ATTEMPTS=${MAX_LOGIN_ATTEMPTS}
       - LOGIN_BLOCK_DURATION_MS=${LOGIN_BLOCK_DURATION_MS}
+      - PROCESSING_TIMEOUT_MS=${PROCESSING_TIMEOUT_MS}
+      - MAX_SUGGEST_SKILLS_TEXT_LENGTH=${MAX_SUGGEST_SKILLS_TEXT_LENGTH}
+      - MAX_PDF_PAGES=${MAX_PDF_PAGES}
     volumes:
       - ./backend:/app
     depends_on:
@@ -100,11 +109,17 @@ services:
       context: ./ai-service
       dockerfile: Dockerfile
     container_name: teammatch-ai
-    ports:
-      - '8000:8000'
+    # No publicar puerto en red de producción; solo accesible vía teammatch-net.
+    # En desarrollo, docker-compose.override.yml expone 3001:3001.
     environment:
+      - PORT=3001
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL}
+      - INTERNAL_AI_SERVICE_TOKEN=${INTERNAL_AI_SERVICE_TOKEN}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
       - PROCESSING_TIMEOUT_MS=${PROCESSING_TIMEOUT_MS}
       - NODE_ENV=${NODE_ENV}
