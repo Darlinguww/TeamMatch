@@ -58,13 +58,15 @@ export interface TeamMember {
   rating?: number;
 }
 
+export type TaskStatus = 'pending' | 'in-progress' | 'completed' | 'blocked';
+
 export interface Task {
   id: string;
   projectId: string;
   title: string;
   description: string;
   assignedTo: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'blocked';
+  status: TaskStatus;
   priority: 'low' | 'medium' | 'high';
   dueDate: string;
   createdDate: string;
@@ -341,6 +343,28 @@ export const mockTasks: Task[] = [
     priority: 'high',
     dueDate: '2026-04-25',
     createdDate: '2026-04-05',
+  },
+  {
+    id: 't5',
+    projectId: 'p2',
+    title: 'Auditoría de cumplimiento HIPAA',
+    description: 'Revisar políticas de datos sensibles con el especialista de seguridad',
+    assignedTo: '2',
+    status: 'blocked',
+    priority: 'high',
+    dueDate: '2026-04-20',
+    createdDate: '2026-04-02',
+  },
+  {
+    id: 't6',
+    projectId: 'p2',
+    title: 'Pruebas de carga en API',
+    description: 'Simular picos de consultas concurrentes',
+    assignedTo: '3',
+    status: 'in-progress',
+    priority: 'medium',
+    dueDate: '2026-04-22',
+    createdDate: '2026-04-06',
   },
 ];
 

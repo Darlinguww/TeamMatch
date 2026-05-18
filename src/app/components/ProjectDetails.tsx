@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -8,17 +8,41 @@ import { Progress } from './ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { 
   ArrowLeft, Users, Clock, Target, Sparkles,
-  UserPlus, Star, Calendar, CheckCircle2
+  UserPlus, Star, Calendar, CheckCircle2, Columns3
 } from 'lucide-react';
-import { mockProjects, mockUsers, mockTeamMembers, mockTasks } from '../lib/mockData';
-import { TeamProposals } from './TeamProposals';
+import { mockProjects, mockUsers, mockTeamMembers, mockTasks, type Task } from '../lib/mockData';
+import { TeamProposals, type TeamProposal } from './TeamProposals';
+import { KanbanBoard } from './KanbanBoard';
+import {
+  TeamManagementModal,
+  type TeamMemberWithUser,
+} from './TeamManagementModal';
 import { useAuth } from '../lib/authContext';
+import { computeMemberAffinityScore } from '../lib/affinityScore';
+import { AffinityScoreBadge } from './AffinityScore';
 
 export function ProjectDetails() {
   const { id } = useParams();
   const { user } = useAuth();
   const project = mockProjects.find(p => p.id === id);
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [teamModalOpen, setTeamModalOpen] = useState(false);
+  const [projectTasks, setProjectTasks] = useState<Task[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMemberWithUser[]>([]);
+
+  useEffect(() => {
+    if (project) {
+      setProjectTasks(mockTasks.filter(t => t.projectId === project.id));
+      setTeamMembers(
+        mockTeamMembers
+          .filter((tm) => tm.projectId === project.id)
+          .map((tm) => ({
+            ...tm,
+            user: mockUsers.find((u) => u.id === tm.userId)!,
+          }))
+          .filter((tm) => tm.user)
+      );
+    }
+  }, [project?.id]);
 
   if (!project) {
     return (
@@ -35,19 +59,31 @@ export function ProjectDetails() {
   }
 
   const leader = mockUsers.find(u => u.id === project.leaderId);
-  const teamMembers = mockTeamMembers
-    .filter(tm => tm.projectId === project.id)
-    .map(tm => ({
-      ...tm,
-      user: mockUsers.find(u => u.id === tm.userId)!,
-    }));
+  const isProjectLeader = project.leaderId === user?.id;
 
-  const projectTasks = mockTasks.filter(t => t.projectId === project.id);
   const completedTasks = projectTasks.filter(t => t.status === 'completed').length;
   const progress = projectTasks.length > 0 ? (completedTasks / projectTasks.length) * 100 : 0;
 
-  const isUserInTeam = teamMembers.some(tm => tm.userId === user?.id);
-  const spotsLeft = project.teamSize - project.currentTeamSize;
+  const getAssigneeName = (userId: string) =>
+    mockUsers.find(u => u.id === userId)?.name ?? 'Sin asignar';
+
+  const isUserInTeam =
+    isProjectLeader || teamMembers.some((tm) => tm.userId === user?.id);
+  const effectiveTeamSize = 1 + teamMembers.length;
+  const spotsLeft = project.teamSize - effectiveTeamSize;
+
+  const handleTeamAccepted = (proposal: TeamProposal) => {
+    const newMembers: TeamMemberWithUser[] = proposal.members.map((ms) => ({
+      userId: ms.user.id,
+      projectId: project.id,
+      role: ms.role,
+      joinedDate: new Date().toISOString().split('T')[0],
+      tasksCompleted: 0,
+      totalTasks: 0,
+      user: ms.user,
+    }));
+    setTeamMembers(newMembers);
+  };
 
   const difficultyColors = {
     easy: 'bg-green-100 text-green-700',
@@ -107,10 +143,10 @@ export function ProjectDetails() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-2">
               <Users className="h-5 w-5 text-primary" />
-              <span className="text-2xl font-bold">{project.currentTeamSize}/{project.teamSize}</span>
+              <span className="text-2xl font-bold">{effectiveTeamSize}/{project.teamSize}</span>
             </div>
             <p className="text-sm text-muted-foreground">Miembros del Equipo</p>
-            <Progress value={(project.currentTeamSize / project.teamSize) * 100} className="mt-2" />
+            <Progress value={(effectiveTeamSize / project.teamSize) * 100} className="mt-2" />
           </CardContent>
         </Card>
 
@@ -149,6 +185,10 @@ export function ProjectDetails() {
       <Tabs defaultValue="team" className="space-y-4">
         <TabsList>
           <TabsTrigger value="team">Equipo</TabsTrigger>
+          <TabsTrigger value="kanban">
+            <Columns3 className="h-4 w-4 mr-2" />
+            Tablero
+          </TabsTrigger>
           <TabsTrigger value="roles">Roles Requeridos</TabsTrigger>
           <TabsTrigger value="skills">Habilidades</TabsTrigger>
           {project.leaderId === user?.id && (
@@ -194,17 +234,35 @@ export function ProjectDetails() {
           {/* Team Members */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <CardTitle>Miembros del Equipo</CardTitle>
-                <Badge variant="outline">{teamMembers.length} miembros</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{teamMembers.length} miembros</Badge>
+                  {(isProjectLeader || isUserInTeam) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTeamModalOpen(true)}
+                    >
+                      <Users className="h-4 w-4 mr-1.5" />
+                      Gestionar equipo
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
               {teamMembers.length > 0 ? (
                 <div className="space-y-4">
-                  {teamMembers.map((member) => (
-                    <div key={member.userId} className="flex items-center justify-between p-4 rounded-lg border">
-                      <div className="flex items-center gap-4">
+                  {teamMembers.map((member) => {
+                    const affinity = computeMemberAffinityScore(
+                      member.user,
+                      project,
+                      member.role
+                    );
+                    return (
+                    <div key={member.userId} className="flex items-center justify-between p-4 rounded-lg border gap-4">
+                      <div className="flex items-center gap-4 min-w-0">
                         <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center">
                           <span className="text-primary font-medium">
                             {member.user.name.split(' ').map(n => n[0]).join('')}
@@ -213,24 +271,71 @@ export function ProjectDetails() {
                         <div>
                           <h4 className="font-medium">{member.user.name}</h4>
                           <p className="text-sm text-muted-foreground">{member.role}</p>
+                          <div className="mt-1.5">
+                            <AffinityScoreBadge score={affinity.overallScore} />
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <p className="text-sm font-medium">
                           {member.tasksCompleted}/{member.totalTasks} tareas
                         </p>
                         <Progress 
-                          value={(member.tasksCompleted / member.totalTasks) * 100} 
+                          value={member.totalTasks > 0 ? (member.tasksCompleted / member.totalTasks) * 100 : 0} 
                           className="w-24 h-1.5 mt-1"
                         />
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <Users className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <div className="text-center py-8 space-y-3">
+                  <Users className="h-12 w-12 text-muted-foreground mx-auto" />
                   <p className="text-muted-foreground">El equipo aún no tiene miembros</p>
+                  {isProjectLeader && (
+                    <Button variant="outline" size="sm" onClick={() => setTeamModalOpen(true)}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Agregar miembros
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {leader && (
+            <TeamManagementModal
+              open={teamModalOpen}
+              onOpenChange={setTeamModalOpen}
+              project={project}
+              leader={leader}
+              members={teamMembers}
+              onMembersChange={setTeamMembers}
+              canManage={isProjectLeader}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="kanban" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tablero Kanban</CardTitle>
+              <CardDescription>
+                Arrastra las tareas entre columnas para actualizar su estado
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {projectTasks.length > 0 ? (
+                <KanbanBoard
+                  tasks={projectTasks}
+                  onTasksChange={setProjectTasks}
+                  getAssigneeName={getAssigneeName}
+                />
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Columns3 className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                  <p>Este proyecto aún no tiene tareas en el tablero</p>
                 </div>
               )}
             </CardContent>
@@ -296,7 +401,7 @@ export function ProjectDetails() {
 
         {project.leaderId === user?.id && (
           <TabsContent value="suggestions" className="space-y-4">
-            <TeamProposals project={project} />
+            <TeamProposals project={project} onTeamAccepted={handleTeamAccepted} />
           </TabsContent>
         )}
       </Tabs>
