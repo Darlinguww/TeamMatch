@@ -4,9 +4,11 @@ import {
   AvailabilityDayInput,
   PublicProfile,
   PublicProfileSearchResult,
+  SKILL_CATEGORIES,
   SearchUsersFilters,
   SkillExperienceInput,
-  WEEKDAYS
+  WEEKDAYS,
+  type SkillCategory
 } from '../types/profile.types.js';
 
 const NEUTRAL_ONBOARDING_SCORE = 50.0;
@@ -16,6 +18,32 @@ const MAX_DOMAIN_WEIGHT_BONUS = 40.0;
 const MIN_EVALUATION_SCORE = 0.0;
 const MAX_EVALUATION_SCORE = 5.0;
 const MAX_REPUTATION_WEIGHT = 0.2;
+const DEFAULT_SKILL_CATEGORY: SkillCategory = 'other';
+const CATEGORY_SKILL_WEIGHT = 5.0;
+const MAX_CATEGORY_WEIGHT_BONUS = 15.0;
+
+function normalizeSkillName(skillName: string): string {
+  return skillName.trim().toLowerCase();
+}
+
+const SKILL_CATEGORY_KEYWORDS = {
+  frontend: ['react', 'react.js', 'vue', 'vue.js', 'angular', 'css', 'html', 'javascript', 'typescript'],
+  backend: ['node.js', 'nodejs', 'express', 'spring', 'django', 'java', 'c#', '.net', 'php', 'ruby', 'go'],
+  mobile: ['flutter', 'react native', 'kotlin', 'swift', 'android', 'ios'],
+  devops: ['docker', 'kubernetes', 'aws', 'azure', 'gcp', 'terraform', 'jenkins', 'github actions'],
+  data: ['python', 'sql', 'postgresql', 'mysql', 'mongodb', 'neo4j', 'tensorflow', 'pytorch', 'machine learning', 'data analysis'],
+  design: ['figma', 'ui design', 'ux design', 'photoshop', 'illustrator', 'wireframing', 'prototyping'],
+  humanities: ['writing', 'research', 'translation', 'history', 'philosophy', 'literature', 'communication'],
+  'social-work': ['social work', 'community management', 'case management', 'counseling', 'psychology', 'volunteering'],
+  management: ['project management', 'scrum', 'agile', 'leadership', 'planning', 'product management'],
+  marketing: ['seo', 'content marketing', 'copywriting', 'analytics', 'branding', 'campaign management'],
+  qa: ['qa', 'testing', 'test automation', 'selenium', 'cypress', 'playwright', 'jest', 'vitest']
+} satisfies Record<Exclude<SkillCategory, 'other'>, string[]>;
+
+const SKILL_CATEGORY_RULES = Object.entries(SKILL_CATEGORY_KEYWORDS).map(([category, skills]) => ({
+  category,
+  skills: skills.map(normalizeSkillName)
+}));
 
 const TECHNOLOGY_DOMAIN_SKILLS = {
   frontend: ['react', 'vue', 'angular', 'css', 'html', 'javascript', 'typescript'],
@@ -118,6 +146,9 @@ export class ProfileRepository {
                WHEN skill IS NULL THEN null
                ELSE {
                  skillName: skill.name,
+                 category: coalesce(head([categoryRule IN $skillCategoryRules
+                                           WHERE toLower(skill.name) IN categoryRule.skills |
+                                           categoryRule.category]), $defaultSkillCategory),
                  yearsOfExperience: experienceRel.yearsOfExperience,
                  level: experienceRel.level
                }
@@ -154,7 +185,12 @@ export class ProfileRepository {
                 experience,
                 availability
          LIMIT 1`,
-        { userId, weekdays: [...WEEKDAYS] }
+        {
+          userId,
+          skillCategoryRules: SKILL_CATEGORY_RULES,
+          defaultSkillCategory: DEFAULT_SKILL_CATEGORY,
+          weekdays: [...WEEKDAYS]
+        }
       );
 
       if (result.records.length === 0) {
@@ -190,6 +226,9 @@ export class ProfileRepository {
                WHEN skill IS NULL THEN null
                ELSE {
                  skillName: skill.name,
+                 category: coalesce(head([categoryRule IN $skillCategoryRules
+                                           WHERE toLower(skill.name) IN categoryRule.skills |
+                                           categoryRule.category]), $defaultSkillCategory),
                  yearsOfExperience: experienceRel.yearsOfExperience,
                  level: experienceRel.level
                }
@@ -275,6 +314,7 @@ export class ProfileRepository {
          WITH u,
               experience,
               availabilitySlots,
+              matchingExperience,
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
@@ -288,6 +328,18 @@ export class ProfileRepository {
               availabilityMatched,
               reputationScore,
               domainWeights,
+              [category IN $skillCategories
+               WHERE category <> $defaultSkillCategory
+                 AND category IN [item IN matchingExperience | item.category]] AS matchingCategories
+         WITH u,
+              experience,
+              availabilitySlots,
+              matchingSkills,
+              totalMatchingYears,
+              availabilityMatched,
+              reputationScore,
+              domainWeights,
+              matchingCategories,
               reduce(domainWeightBonus = 0.0, domainWeight IN domainWeights | domainWeightBonus + domainWeight.weight) AS domainWeightBonus
          WITH u,
               experience,
@@ -297,6 +349,11 @@ export class ProfileRepository {
               availabilityMatched,
               reputationScore,
               domainWeights,
+              matchingCategories,
+              CASE
+                WHEN size(matchingCategories) * $categorySkillWeight > $maxCategoryWeightBonus THEN $maxCategoryWeightBonus
+                ELSE size(matchingCategories) * $categorySkillWeight
+              END AS categoryWeightApplied,
               (size($skills) = 0 AND $minYears IS NULL AND size(experience) = 0) AS isNeutralScore,
               (matchingSkills * 100.0) +
               (totalMatchingYears * 10.0) +
@@ -304,6 +361,10 @@ export class ProfileRepository {
               CASE
                 WHEN domainWeightBonus > $maxDomainWeightBonus THEN $maxDomainWeightBonus
                 ELSE domainWeightBonus
+              END +
+              CASE
+                WHEN size(matchingCategories) * $categorySkillWeight > $maxCategoryWeightBonus THEN $maxCategoryWeightBonus
+                ELSE size(matchingCategories) * $categorySkillWeight
               END AS rawScore
          WITH u,
               experience,
@@ -317,6 +378,8 @@ export class ProfileRepository {
               totalMatchingYears,
               availabilityMatched,
               isNeutralScore,
+              matchingCategories,
+              categoryWeightApplied,
               reputationScore,
               domainWeights,
               CASE
@@ -330,6 +393,8 @@ export class ProfileRepository {
               totalMatchingYears,
               availabilityMatched,
               isNeutralScore,
+              matchingCategories,
+              categoryWeightApplied,
               reputationScore,
               domainWeights,
               baseScore * $maxReputationWeight * reputationScore AS reputationWeightApplied,
@@ -341,6 +406,8 @@ export class ProfileRepository {
               totalMatchingYears,
               availabilityMatched,
               isNeutralScore,
+              matchingCategories,
+              categoryWeightApplied,
               reputationScore,
               reputationWeightApplied,
               domainWeights,
@@ -354,6 +421,8 @@ export class ProfileRepository {
                   totalMatchingYears: totalMatchingYears,
                   availabilityMatched: availabilityMatched,
                   score: score,
+                  matchingCategories: matchingCategories,
+                  categoryWeightApplied: categoryWeightApplied,
                   reputationScore: reputationScore,
                   reputationWeightApplied: reputationWeightApplied,
                   isNeutralScore: isNeutralScore,
@@ -369,6 +438,11 @@ export class ProfileRepository {
           availabilityDay: filters.availability?.day ?? null,
           availabilityStart: filters.availability?.start ?? null,
           availabilityEnd: filters.availability?.end ?? null,
+          skillCategoryRules: SKILL_CATEGORY_RULES,
+          skillCategories: [...SKILL_CATEGORIES],
+          defaultSkillCategory: DEFAULT_SKILL_CATEGORY,
+          categorySkillWeight: CATEGORY_SKILL_WEIGHT,
+          maxCategoryWeightBonus: MAX_CATEGORY_WEIGHT_BONUS,
           technologyDomainWeights: TECHNOLOGY_DOMAIN_WEIGHTS,
           maxDomainWeightBonus: MAX_DOMAIN_WEIGHT_BONUS,
           minEvaluationScore: MIN_EVALUATION_SCORE,

@@ -3,10 +3,12 @@ import {
   ProfileSearchMatch,
   PublicProfile,
   PublicProfileSearchResult,
+  SKILL_CATEGORIES,
   SkillExperience,
   TimeSlot,
   WEEKDAYS,
-  Weekday
+  Weekday,
+  type SkillCategory
 } from '../types/profile.types.js';
 
 export interface PublicProfileRecord {
@@ -20,6 +22,10 @@ export interface PublicProfileSearchRecord extends PublicProfileRecord {
   match: unknown;
 }
 
+function isSkillCategory(value: string): value is SkillCategory {
+  return SKILL_CATEGORIES.includes(value as SkillCategory);
+}
+
 function serializeExperienceItem(item: unknown): SkillExperience | null {
   if (typeof item !== 'object' || item === null || Array.isArray(item)) {
     return null;
@@ -27,6 +33,9 @@ function serializeExperienceItem(item: unknown): SkillExperience | null {
 
   const rawItem = item as Record<string, unknown>;
   const skillName = typeof rawItem.skillName === 'string' ? rawItem.skillName : '';
+  const category = typeof rawItem.category === 'string' && isSkillCategory(rawItem.category)
+    ? rawItem.category
+    : 'other';
 
   if (!skillName) {
     return null;
@@ -34,6 +43,7 @@ function serializeExperienceItem(item: unknown): SkillExperience | null {
 
   return {
     skillName,
+    category,
     yearsOfExperience: Number(rawItem.yearsOfExperience ?? 0),
     level: typeof rawItem.level === 'string' && rawItem.level ? rawItem.level : null
   };
@@ -133,6 +143,16 @@ function serializeDomainWeights(domainWeights: unknown): Record<string, number> 
   }, {});
 }
 
+function serializeMatchingCategories(matchingCategories: unknown): SkillCategory[] {
+  if (!Array.isArray(matchingCategories)) {
+    return [];
+  }
+
+  return matchingCategories.filter((category): category is SkillCategory => (
+    typeof category === 'string' && isSkillCategory(category)
+  ));
+}
+
 function serializeSearchMatch(match: unknown): ProfileSearchMatch {
   if (typeof match !== 'object' || match === null || Array.isArray(match)) {
     return {
@@ -140,6 +160,8 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
       totalMatchingYears: 0,
       availabilityMatched: false,
       score: 0,
+      matchingCategories: [],
+      categoryWeightApplied: 0,
       reputationScore: 0,
       reputationWeightApplied: 0,
       isNeutralScore: false,
@@ -154,6 +176,8 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
     totalMatchingYears: Number(rawMatch.totalMatchingYears ?? 0),
     availabilityMatched: rawMatch.availabilityMatched === true,
     score: Number(rawMatch.score ?? 0),
+    matchingCategories: serializeMatchingCategories(rawMatch.matchingCategories),
+    categoryWeightApplied: Number(rawMatch.categoryWeightApplied ?? 0),
     reputationScore: Number(rawMatch.reputationScore ?? 0),
     reputationWeightApplied: Number(rawMatch.reputationWeightApplied ?? 0),
     isNeutralScore: rawMatch.isNeutralScore === true,

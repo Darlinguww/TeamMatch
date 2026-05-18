@@ -4,8 +4,26 @@ export interface SkillExperienceInput {
   level?: string;
 }
 
+export const SKILL_CATEGORIES = [
+  'frontend',
+  'backend',
+  'mobile',
+  'devops',
+  'data',
+  'design',
+  'humanities',
+  'social-work',
+  'management',
+  'marketing',
+  'qa',
+  'other'
+] as const;
+
+export type SkillCategory = typeof SKILL_CATEGORIES[number];
+
 export interface SkillExperience {
   skillName: string;
+  category: SkillCategory;
   yearsOfExperience: number;
   level: string | null;
 }
@@ -70,6 +88,8 @@ export interface ProfileSearchMatch {
   totalMatchingYears: number;
   availabilityMatched: boolean;
   score: number;
+  matchingCategories: SkillCategory[];
+  categoryWeightApplied: number;
   reputationScore: number;
   reputationWeightApplied: number;
   isNeutralScore: boolean;
