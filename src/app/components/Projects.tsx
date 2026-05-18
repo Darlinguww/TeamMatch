@@ -16,6 +16,7 @@ import { Link } from 'react-router';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { useAuth } from '../lib/authContext';
+import { useSettings } from '../lib/settingsContext';
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -458,14 +459,22 @@ function CreateProjectModal({ open, onClose, onCreated }: {
 
 // ─── project card ─────────────────────────────────────────────────────────────
 
-function ProjectCard({ project, matchScore }: { project: Project; matchScore: number }) {
+function ProjectCard({
+  project,
+  matchScore,
+  showMatchScore,
+}: {
+  project: Project;
+  matchScore: number;
+  showMatchScore: boolean;
+}) {
   const spotsLeft = project.teamSize - project.currentTeamSize;
   return (
     <Card className="hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5 flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between mb-2 gap-2">
           <Badge className={statusColors[project.status]}>{statusLabels[project.status]}</Badge>
-          {project.status === 'open' && matchScore > 0 && (
+          {showMatchScore && project.status === 'open' && matchScore > 0 && (
             <Badge className="bg-primary/10 text-primary shrink-0">{matchScore}% Match</Badge>
           )}
         </div>
@@ -521,6 +530,8 @@ function ProjectCard({ project, matchScore }: { project: Project; matchScore: nu
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 export function Projects() {
+  const { settings } = useSettings();
+  const showMatchScore = settings.experience.showMatchScores;
   const { user } = useAuth();
   const [allProjects, setAllProjects] = useState<Project[]>(mockProjects);
   const [showCreate,  setShowCreate]  = useState(false);
@@ -621,7 +632,14 @@ export function Projects() {
           <TabsContent key={tab.key} value={tab.key} className="mt-4">
             {tab.list.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {tab.list.map(p => <ProjectCard key={p.id} project={p} matchScore={calcMatch(p)} />)}
+                {tab.list.map(p => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    matchScore={calcMatch(p)}
+                    showMatchScore={showMatchScore}
+                  />
+                ))}
               </div>
             ) : (
               <div className="text-center py-16">

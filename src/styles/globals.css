@@ -249,3 +249,13 @@ html {
 .subject-icon-bg {
   background-color: var(--icon-bg);
 }
+
+/* Preferencias de accesibilidad (Ajustes) */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}

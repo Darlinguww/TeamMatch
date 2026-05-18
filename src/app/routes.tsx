@@ -6,6 +6,7 @@ import { Projects } from "./components/Projects";
 import { ProjectDetails } from "./components/ProjectDetails";
 import { MyTeams } from "./components/MyTeams";
 import { Feedback } from "./components/Feedback";
+import { Settings } from "./components/Settings";
 import { Login } from "./components/Login";
 import { Register } from "./components/Register";
 import { OnboardingWizard } from "./components/OnboardingWizard";
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
       { path: "projects/:id", Component: ProjectDetails },
       { path: "my-teams", Component: MyTeams },
       { path: "feedback", Component: Feedback },
+      { path: "settings", Component: Settings },
     ],
   },
   {

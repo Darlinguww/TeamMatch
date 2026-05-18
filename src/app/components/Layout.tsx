@@ -1,10 +1,14 @@
 import { Outlet, NavLink, useNavigate } from 'react-router';
-import { Home, User, Briefcase, Users, MessageSquare, Network, LogOut } from 'lucide-react';
+import { Home, User, Briefcase, Users, MessageSquare, Network, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
+import { useSettings } from '../lib/settingsContext';
+import { cn } from './ui/utils';
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const { settings } = useSettings();
   const navigate = useNavigate();
+  const compact = settings.experience.compactLayout;
 
   const handleLogout = () => {
     logout();
@@ -17,6 +21,7 @@ export function Layout() {
     { to: '/projects', icon: Briefcase, label: 'Proyectos' },
     { to: '/my-teams', icon: Users, label: 'Mis Equipos' },
     { to: '/feedback', icon: MessageSquare, label: 'Evaluaciones' },
+    { to: '/settings', icon: Settings, label: 'Ajustes' },
   ];
 
   // Get initials for avatar
@@ -43,7 +48,7 @@ export function Layout() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="rounded-full bg-green-100 px-3 py-1 text-xs text-green-700">
+              <div className="rounded-full bg-green-100 dark:bg-green-900/40 px-3 py-1 text-xs text-green-700 dark:text-green-300">
                 Sistema Activo
               </div>
               {/* User avatar + name */}
@@ -82,7 +87,9 @@ export function Layout() {
                   to={item.to}
                   end={item.exact}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
+                    `flex items-center gap-2 px-4 border-b-2 transition-colors whitespace-nowrap ${
+                      compact ? 'py-2' : 'py-3'
+                    } ${
                       isActive
                         ? 'border-primary text-primary'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/50'
@@ -99,7 +106,7 @@ export function Layout() {
       </nav>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className={cn('container mx-auto px-4', compact ? 'py-5' : 'py-8')}>
         <Outlet />
       </main>
     </div>
