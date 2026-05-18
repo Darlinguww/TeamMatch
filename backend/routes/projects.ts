@@ -6,6 +6,38 @@ import { isUserInProjectByTask, isUserInProject } from './tasks';
 
 const router = Router();
 
+const EXACT_SKILL_WEIGHT = 1;
+const SIMILAR_SKILL_WEIGHT = 0.65;
+const COMPLEMENTARY_SKILL_WEIGHT = 0.45;
+const DEFAULT_SKILL_LEVEL = 1;
+const MAX_SKILL_LEVEL = 5;
+const GDS_SKILLS_GRAPH = 'teamMatchSkillsSimilarity';
+
+type MatchSkillContribution = {
+  requiredSkill: string;
+  matchedSkill: string;
+  matchType: 'exact' | 'similar' | 'complementary';
+  semanticScore: number;
+  level: number;
+  score: number;
+};
+
+type MatchCandidate = {
+  userId: string;
+  email: string | null;
+  name: string | null;
+  score: number;
+  exactMatches: number;
+  similarMatches: number;
+  complementaryMatches: number;
+  skills: MatchSkillContribution[];
+};
+
+function normalizeScore(value: unknown): number {
+  const numericValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
 // Crear un nuevo proyecto
 router.post('/', requireAuth, async (req: Request, res: Response) => {
   const { title, description, roles } = req.body ?? {};
@@ -417,13 +449,97 @@ router.post('/:taskId/reviews', requireAuth, async (req: Request, res: Response)
 
 
 // ------- Pipeline de matching de candidatos -------
+// Recalcular relaciones semánticas entre habilidades usando Neo4j GDS.
+// La fase 2 consume estas relaciones cuando existen, pero puede operar solo con matches exactos.
+router.post('/match/phase2/rebuild-semantic-index', requireAuth, async (req: Request, res: Response) => {
+  const session = driver.session();
+  const similarityCutoff = normalizeScore(req.body?.similarityCutoff) || 0.35;
+  const topK = normalizeScore(req.body?.topK) || 10;
+
+  try {
+    await session.run('CALL gds.version() YIELD version RETURN version');
+
+    const graphExistsResult = await session.run(
+      'CALL gds.graph.exists($graphName) YIELD exists RETURN exists',
+      { graphName: GDS_SKILLS_GRAPH }
+    );
+    const graphExists = Boolean(graphExistsResult.records[0]?.get('exists'));
+
+    if (graphExists) {
+      await session.run('CALL gds.graph.drop($graphName) YIELD graphName RETURN graphName', {
+        graphName: GDS_SKILLS_GRAPH
+      });
+    }
+
+    const projectionResult = await session.run(
+      `CALL gds.graph.project(
+         $graphName,
+         ['Habilidad', 'Usuario', 'Proyecto'],
+         {
+           TIENE_HABILIDAD: {orientation: 'UNDIRECTED'},
+           REQUIERE: {orientation: 'UNDIRECTED'}
+         }
+       )
+       YIELD graphName, nodeCount, relationshipCount
+       RETURN graphName, nodeCount, relationshipCount`,
+      { graphName: GDS_SKILLS_GRAPH }
+    );
+
+    await session.run('MATCH (:Habilidad)-[r:SIMILAR_A]->(:Habilidad) DELETE r');
+
+    const similarityResult = await session.run(
+      `CALL gds.nodeSimilarity.stream($graphName, {
+         topK: $topK,
+         similarityCutoff: $similarityCutoff
+       })
+       YIELD node1, node2, similarity
+       WITH gds.util.asNode(node1) AS source,
+            gds.util.asNode(node2) AS target,
+            similarity
+       WHERE source:Habilidad
+         AND target:Habilidad
+         AND source.name <> target.name
+       MERGE (source)-[relation:SIMILAR_A]->(target)
+       SET relation.score = similarity,
+           relation.source = 'gds.nodeSimilarity',
+           relation.updatedAt = datetime()
+       RETURN count(relation) AS relationshipsCreated`,
+      {
+        graphName: GDS_SKILLS_GRAPH,
+        topK,
+        similarityCutoff
+      }
+    );
+
+    const projection = projectionResult.records[0];
+    const relationshipsCreated = similarityResult.records[0]?.get('relationshipsCreated') ?? 0;
+
+    return res.json({
+      graphName: projection.get('graphName'),
+      nodeCount: projection.get('nodeCount'),
+      relationshipCount: projection.get('relationshipCount'),
+      relationshipsCreated,
+      similarityCutoff,
+      topK
+    });
+  } catch (error: any) {
+    console.error('POST /projects/match/phase2/rebuild-semantic-index', error);
+    return res.status(503).json({
+      error: 'No se pudo recalcular el índice semántico con GDS',
+      detail: error.message
+    });
+  } finally {
+    await session.close();
+  }
+});
+
 // Fase 1 - Filtrado estructural: devolver candidatos que tienen al menos una de las habilidades del proyecto
 router.get('/:id/match/phase1', requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   const session = driver.session();
 
   try {
-    // Obtener skills del proyecto y el líder (creator)
+    // Obtener skills del proyecto y el líder para excluirlo de los candidatos
     const metaResult = await session.run(
       `MATCH (p:Proyecto {projectId: $projectId})
        OPTIONAL MATCH (leader:Usuario)-[:PERTENECE_A {rol: 'lider'}]->(p)
@@ -459,6 +575,147 @@ router.get('/:id/match/phase1', requireAuth, async (req: Request, res: Response)
     return res.json({ candidates });
   } catch (error: any) {
     console.error('GET /projects/:id/match/phase1', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  } finally {
+    await session.close();
+  }
+});
+
+// Fase 2 - Scoring semántico: habilidades exactas, similares y complementarias.
+router.get('/:id/match/phase2', requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const session = driver.session();
+
+  try {
+    const result = await session.run(
+      `MATCH (project:Proyecto {projectId: $projectId})
+       OPTIONAL MATCH (leader:Usuario)-[:PERTENECE_A {rol: 'lider'}]->(project)
+       WITH project, leader
+       MATCH (project)-[:REQUIERE]->(required:Habilidad)
+       CALL {
+         WITH required
+         MATCH (candidate:Usuario)-[hasSkill:TIENE_HABILIDAD]->(required)
+         RETURN candidate,
+                required.name AS requiredSkill,
+                required.name AS matchedSkill,
+                'exact' AS matchType,
+                $exactWeight AS weight,
+                1.0 AS semanticScore,
+                coalesce(toFloat(hasSkill.nivel), toFloat(hasSkill.level), $defaultSkillLevel) AS rawLevel
+
+         UNION
+
+         WITH required
+         MATCH (required)-[similarity:SIMILAR_A]-(matched:Habilidad)<-[hasSkill:TIENE_HABILIDAD]-(candidate:Usuario)
+         WHERE matched <> required
+         RETURN candidate,
+                required.name AS requiredSkill,
+                matched.name AS matchedSkill,
+                'similar' AS matchType,
+                $similarWeight AS weight,
+                coalesce(toFloat(similarity.score), 1.0) AS semanticScore,
+                coalesce(toFloat(hasSkill.nivel), toFloat(hasSkill.level), $defaultSkillLevel) AS rawLevel
+
+         UNION
+
+         WITH required
+         MATCH (required)-[complement:COMPLEMENTA]-(matched:Habilidad)<-[hasSkill:TIENE_HABILIDAD]-(candidate:Usuario)
+         WHERE matched <> required
+         RETURN candidate,
+                required.name AS requiredSkill,
+                matched.name AS matchedSkill,
+                'complementary' AS matchType,
+                $complementaryWeight AS weight,
+                coalesce(toFloat(complement.score), 1.0) AS semanticScore,
+                coalesce(toFloat(hasSkill.nivel), toFloat(hasSkill.level), $defaultSkillLevel) AS rawLevel
+       }
+       WHERE leader IS NULL OR candidate.userId <> leader.userId
+       WITH candidate,
+            requiredSkill,
+            matchedSkill,
+            matchType,
+            semanticScore,
+            CASE
+              WHEN rawLevel < 1 THEN 1.0
+              WHEN rawLevel > $maxSkillLevel THEN $maxSkillLevel
+              ELSE rawLevel
+            END AS level,
+            weight
+       WITH candidate,
+            requiredSkill,
+            matchedSkill,
+            matchType,
+            semanticScore,
+            level,
+            weight * semanticScore * (1.0 + ((level - 1.0) * 0.1)) AS contributionScore
+       WITH candidate,
+            collect({
+              requiredSkill: requiredSkill,
+              matchedSkill: matchedSkill,
+              matchType: matchType,
+              semanticScore: semanticScore,
+              level: level,
+              score: contributionScore
+            }) AS skills,
+            sum(contributionScore) AS totalScore
+       RETURN candidate.userId AS userId,
+              candidate.email AS email,
+              candidate.user AS name,
+              round(totalScore * 1000.0) / 1000.0 AS score,
+              size([skill IN skills WHERE skill.matchType = 'exact']) AS exactMatches,
+              size([skill IN skills WHERE skill.matchType = 'similar']) AS similarMatches,
+              size([skill IN skills WHERE skill.matchType = 'complementary']) AS complementaryMatches,
+              skills
+       ORDER BY score DESC, exactMatches DESC, similarMatches DESC`,
+      {
+        projectId: id,
+        exactWeight: EXACT_SKILL_WEIGHT,
+        similarWeight: SIMILAR_SKILL_WEIGHT,
+        complementaryWeight: COMPLEMENTARY_SKILL_WEIGHT,
+        defaultSkillLevel: DEFAULT_SKILL_LEVEL,
+        maxSkillLevel: MAX_SKILL_LEVEL
+      }
+    );
+
+    const candidates: MatchCandidate[] = result.records.map((record) => ({
+      userId: record.get('userId'),
+      email: record.get('email'),
+      name: record.get('name'),
+      score: normalizeScore(record.get('score')),
+      exactMatches: normalizeScore(record.get('exactMatches')),
+      similarMatches: normalizeScore(record.get('similarMatches')),
+      complementaryMatches: normalizeScore(record.get('complementaryMatches')),
+      skills: (record.get('skills') as MatchSkillContribution[]).map((skill) => ({
+        requiredSkill: skill.requiredSkill,
+        matchedSkill: skill.matchedSkill,
+        matchType: skill.matchType,
+        semanticScore: normalizeScore(skill.semanticScore),
+        level: normalizeScore(skill.level),
+        score: normalizeScore(skill.score)
+      }))
+    }));
+
+    const projectExists = candidates.length > 0
+      ? true
+      : (await session.run(
+          'MATCH (project:Proyecto {projectId: $projectId}) RETURN project.projectId AS projectId',
+          { projectId: id }
+        )).records.length > 0;
+
+    if (!projectExists) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    return res.json({
+      candidates,
+      weights: {
+        exact: EXACT_SKILL_WEIGHT,
+        similar: SIMILAR_SKILL_WEIGHT,
+        complementary: COMPLEMENTARY_SKILL_WEIGHT
+      }
+    });
+  } catch (error: any) {
+    console.error('GET /projects/:id/match/phase2', error);
     return res.status(500).json({ error: 'Internal Server Error' });
   } finally {
     await session.close();
