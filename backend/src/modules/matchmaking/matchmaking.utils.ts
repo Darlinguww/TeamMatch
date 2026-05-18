@@ -9,13 +9,13 @@ import type {
   MatchmakingTeamMember
 } from './matchmaking.types.js';
 
-const MAX_SKILLS_SCORE = 35;
-const MAX_AVAILABILITY_SCORE = 10;
-const MAX_REPUTATION_SCORE = 10;
-const MAX_ROLE_COVERAGE_SCORE = 25;
-const MAX_CATEGORY_DOMAIN_SCORE = 10;
+const MAX_SKILLS_SCORE = 40;
+const MAX_AVAILABILITY_SCORE = 20;
+const MAX_REPUTATION_SCORE = 20;
+const MAX_ROLE_COVERAGE_SCORE = 20;
+const MAX_CATEGORY_DOMAIN_SCORE = 5;
 const MAX_REDUNDANCY_PENALTY = 10;
-const MAX_EXPERIENCE_BALANCE_SCORE = 10;
+const MAX_EXPERIENCE_BALANCE_SCORE = 5;
 
 const DOMAIN_SKILLS: Record<string, string[]> = {
   frontend: ['react', 'vue', 'angular', 'css', 'html', 'javascript', 'typescript'],
@@ -151,8 +151,8 @@ function getDomainWeights(coveredSkills: string[]): ProfileSearchDomainWeights {
 }
 
 function scoreCategoryDomain(matchingCategories: SkillCategory[], domainWeights: ProfileSearchDomainWeights): number {
-  const categoryScore = Math.min(matchingCategories.length * 2, 6);
-  const domainScore = Math.min(Object.values(domainWeights).reduce((total, weight) => total + weight, 0), 10) * 0.4;
+  const categoryScore = Math.min(matchingCategories.length, 3);
+  const domainScore = Math.min(Object.values(domainWeights).reduce((total, weight) => total + weight, 0), 10) * 0.2;
 
   return roundScore(clamp(categoryScore + domainScore, 0, MAX_CATEGORY_DOMAIN_SCORE));
 }
@@ -186,11 +186,11 @@ function scoreExperienceBalance(candidate: MatchmakingCandidate, teamMembers: Ma
   }
 
   if (uniqueLevels.length === 2) {
-    return 6;
+    return 3;
   }
 
   if (uniqueLevels.length === 1) {
-    return 2;
+    return 1;
   }
 
   return 0;

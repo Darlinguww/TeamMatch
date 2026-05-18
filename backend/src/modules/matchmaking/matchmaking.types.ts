@@ -38,6 +38,12 @@ export interface MatchmakingOptions {
   availability?: MatchmakingAvailabilityRequirement | null;
 }
 
+export interface MatchmakingPagination {
+  limit: number;
+  offset: number;
+  total: number;
+}
+
 export interface MatchmakingScoreBreakdown {
   skills: number;
   availability: number;
@@ -74,4 +80,10 @@ export interface ProjectMatchmakingResult {
   title: string;
   roles: MatchmakingRoleRequirement[];
   matches: MatchmakingResult[];
+}
+
+export interface ProjectMatchmakingPage {
+  projectId: string;
+  matches: MatchmakingResult[];
+  pagination: MatchmakingPagination;
 }

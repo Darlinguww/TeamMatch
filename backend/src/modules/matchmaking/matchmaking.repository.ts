@@ -228,7 +228,6 @@ export class MatchmakingRepository {
          CALL {
            WITH project
            MATCH (candidate:Usuario)
-           WHERE NOT (candidate)-[:PERTENECE_A]->(project)
            CALL {
              WITH candidate
              OPTIONAL MATCH (candidate)-[experienceRel:TIENE_EXPERIENCIA_EN]->(skill:Habilidad)
