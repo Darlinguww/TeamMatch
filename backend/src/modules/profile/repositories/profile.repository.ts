@@ -10,6 +10,44 @@ import {
 } from '../types/profile.types.js';
 
 export class ProfileRepository {
+  public async replaceUserSkills(userId: string, skills: string[]): Promise<PublicProfile | null> {
+    const session = driver.session();
+    const updatedAt = new Date().toISOString();
+    const normalizedSkills = skills.map((skillName) => ({
+      skillName,
+      normalizedSkillName: skillName.trim().toLowerCase()
+    }));
+    let userExists = false;
+
+    try {
+      const result = await session.run(
+        `MATCH (u:Usuario {userId: $userId})
+         OPTIONAL MATCH (u)-[oldSkill:TIENE_HABILIDAD]->(:Habilidad)
+         DELETE oldSkill
+         WITH u
+         CALL {
+           WITH u
+           UNWIND $skills AS item
+           MERGE (skill:Habilidad {normalizedName: item.normalizedSkillName})
+           ON CREATE SET skill.name = item.skillName,
+                         skill.createdAt = $updatedAt
+           SET skill.updatedAt = $updatedAt
+           MERGE (u)-[skillRel:TIENE_HABILIDAD]->(skill)
+           SET skillRel.updatedAt = $updatedAt
+           RETURN count(skillRel) AS updatedRelationships
+         }
+         RETURN u.userId AS userId`,
+        { userId, skills: normalizedSkills, updatedAt }
+      );
+
+      userExists = result.records.length > 0;
+    } finally {
+      await session.close();
+    }
+
+    return userExists ? this.findPublicProfileByUserId(userId) : null;
+  }
+
   public async replaceUserExperience(userId: string, experience: SkillExperienceInput[]): Promise<PublicProfile | null> {
     const session = driver.session();
     const updatedAt = new Date().toISOString();
@@ -113,6 +151,13 @@ export class ProfileRepository {
          }
          CALL {
            WITH u
+           OPTIONAL MATCH (u)-[:TIENE_HABILIDAD]->(skill:Habilidad)
+           WITH skill
+           ORDER BY toLower(skill.name)
+           RETURN [name IN collect(skill.name) WHERE name IS NOT NULL] AS skills
+         }
+         CALL {
+           WITH u
            OPTIONAL MATCH (u)-[:DISPONIBLE_EN]->(availability:Disponibilidad)
            WITH availability
            ORDER BY availability.start
@@ -127,9 +172,10 @@ export class ProfileRepository {
              END
            ) WHERE item IS NOT NULL] AS availabilitySlots
          }
-         WITH u, experience, availabilitySlots
+         WITH u, experience, skills, availabilitySlots
          WITH u,
               experience,
+              skills,
               [day IN $weekdays
                WHERE size([slot IN availabilitySlots WHERE slot.day = day]) > 0 |
                {
@@ -139,6 +185,7 @@ export class ProfileRepository {
          RETURN u.userId AS userId,
                 u.user AS user,
                 experience,
+                skills,
                 availability
          LIMIT 1`,
         { userId, weekdays: [...WEEKDAYS] }
@@ -153,6 +200,7 @@ export class ProfileRepository {
         userId: record.get('userId'),
         user: record.get('user'),
         experience: record.get('experience'),
+        skills: record.get('skills'),
         availability: record.get('availability')
       });
     } finally {
@@ -185,6 +233,13 @@ export class ProfileRepository {
          }
          CALL {
            WITH u
+           OPTIONAL MATCH (u)-[:TIENE_HABILIDAD]->(skill:Habilidad)
+           WITH skill
+           ORDER BY toLower(skill.name)
+           RETURN [name IN collect(skill.name) WHERE name IS NOT NULL] AS confirmedSkills
+         }
+         CALL {
+           WITH u
            OPTIONAL MATCH (u)-[:DISPONIBLE_EN]->(availability:Disponibilidad)
            WITH availability
            ORDER BY availability.start
@@ -201,12 +256,14 @@ export class ProfileRepository {
          }
          WITH u,
               experience,
+              confirmedSkills,
               availabilitySlots,
               [item IN experience
                WHERE (size($skills) = 0 OR toLower(item.skillName) IN $skills)
                  AND ($minYears IS NULL OR item.yearsOfExperience >= $minYears)] AS matchingExperience
          WITH u,
               experience,
+              confirmedSkills,
               availabilitySlots,
               matchingExperience,
               CASE
@@ -218,24 +275,33 @@ export class ProfileRepository {
               END AS availabilityMatched
          WITH u,
               experience,
+              confirmedSkills,
               availabilitySlots,
               matchingExperience,
               availabilityMatched,
               size(matchingExperience) AS matchingSkills,
-              reduce(total = 0.0, item IN matchingExperience | total + coalesce(item.yearsOfExperience, 0.0)) AS totalMatchingYears
+              reduce(total = 0.0, item IN matchingExperience | total + coalesce(item.yearsOfExperience, 0.0)) AS totalMatchingYears,
+              CASE
+                WHEN size($skills) = 0 THEN 0.0
+                ELSE toFloat(size([skill IN confirmedSkills WHERE NOT toLower(skill) IN $skills])) * 5.0
+              END AS redundancyPenalty
          WHERE ((size($skills) = 0 AND $minYears IS NULL) OR matchingSkills > 0)
            AND availabilityMatched
          WITH u,
               experience,
+              confirmedSkills,
               availabilitySlots,
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              redundancyPenalty,
               (matchingSkills * 100.0) +
               (totalMatchingYears * 10.0) +
-              CASE WHEN $hasAvailabilityFilter = true AND availabilityMatched THEN 50.0 ELSE 0.0 END AS score
+              CASE WHEN $hasAvailabilityFilter = true AND availabilityMatched THEN 50.0 ELSE 0.0 END -
+              redundancyPenalty AS score
          WITH u,
               experience,
+              confirmedSkills,
               [day IN $weekdays
                WHERE size([slot IN availabilitySlots WHERE slot.day = day]) > 0 |
                {
@@ -245,15 +311,18 @@ export class ProfileRepository {
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              redundancyPenalty,
               score
          RETURN u.userId AS userId,
                 u.user AS user,
                 experience,
+                confirmedSkills AS skills,
                 availability,
                 {
                   matchingSkills: matchingSkills,
                   totalMatchingYears: totalMatchingYears,
                   availabilityMatched: availabilityMatched,
+                  redundancyPenalty: redundancyPenalty,
                   score: score
                 } AS match
          ORDER BY score DESC, matchingSkills DESC, totalMatchingYears DESC, toLower(u.user), u.userId
@@ -277,6 +346,7 @@ export class ProfileRepository {
         user: record.get('user'),
         experience: record.get('experience'),
         availability: record.get('availability'),
+        skills: record.get('skills'),
         match: record.get('match')
       }));
     } finally {

@@ -5,6 +5,7 @@ import { validateDto } from '../../shared/middlewares/validateDto.js';
 import { validateSearchUsersDto } from './dto/search-users.dto.js';
 import { validateUpdateProfileAvailabilityDto } from './dto/update-profile-availability.dto.js';
 import { validateUpdateProfileExperienceDto } from './dto/update-profile-experience.dto.js';
+import { validateUpdateProfileSkillsDto } from './dto/update-profile-skills.dto.js';
 import { ProfileController } from './profile.controller.js';
 import { ProfileService } from './profile.service.js';
 import { ProfileRepository } from './repositories/profile.repository.js';
@@ -37,6 +38,12 @@ router.put(
   requireAuth,
   validateDto(validateUpdateProfileAvailabilityDto),
   profileController.updateAvailability
+);
+router.put(
+  '/profile/skills',
+  requireAuth,
+  validateDto(validateUpdateProfileSkillsDto),
+  profileController.updateSkills
 );
 router.get('/users/search', validateSearchUsersQuery, profileController.searchUsers);
 router.get('/users/:id/profile', profileController.getPublicProfile);

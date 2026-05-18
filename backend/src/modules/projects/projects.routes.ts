@@ -25,6 +25,11 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
   res.status(200).json(project);
 }));
 
+router.get('/:id/match/phase1', requireAuth, asyncHandler(async (req, res) => {
+  const candidates = await projectService.findPhaseOneCandidates(req.user!.userId, req.params.id);
+  res.status(200).json({ candidates });
+}));
+
 router.post('/:projectId/tasks', requireAuth, asyncHandler(async (req, res) => {
   const task = await taskService.createProjectTask(req.user!.userId, req.params.projectId, req.body ?? {});
   res.status(201).json(task);

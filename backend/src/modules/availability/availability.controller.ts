@@ -3,6 +3,8 @@ import { BadRequestError } from '../../shared/errors/HttpErrors.js';
 import { asyncHandler } from '../../shared/middlewares/asyncHandler.js';
 import { AvailabilityParserService } from './availability-parser.service.js';
 
+const MAX_AVAILABILITY_TEXT_LENGTH = 1000;
+
 function readText(body: unknown): string {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     throw new BadRequestError('Request body must be an object');
@@ -14,7 +16,13 @@ function readText(body: unknown): string {
     throw new BadRequestError('Availability text is required');
   }
 
-  return text;
+  const normalizedText = text.trim();
+
+  if (normalizedText.length > MAX_AVAILABILITY_TEXT_LENGTH) {
+    throw new BadRequestError(`Availability text must be ${MAX_AVAILABILITY_TEXT_LENGTH} characters or fewer`);
+  }
+
+  return normalizedText;
 }
 
 export class AvailabilityController {

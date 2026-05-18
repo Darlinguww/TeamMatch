@@ -64,7 +64,8 @@ describe('Profile validation', () => {
       userId: 'user-1',
       user: 'Public User',
       experience: [],
-      availability: []
+      availability: [],
+      skills: []
     });
     expect(profile).not.toHaveProperty('email');
     expect(profile).not.toHaveProperty('passwordHash');

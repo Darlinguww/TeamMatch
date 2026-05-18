@@ -1,5 +1,11 @@
 import { driver } from '../../../database/neo4j.js';
-import { CreateProjectInput, ProjectDetails, ProjectRoleInput, ProjectSummary } from '../types/project.types.js';
+import {
+  CreateProjectInput,
+  ProjectDetails,
+  ProjectPhaseOneCandidate,
+  ProjectRoleInput,
+  ProjectSummary
+} from '../types/project.types.js';
 import { ProjectRepository as ProjectRepositoryContract } from '../project.service.js';
 
 export class Neo4jProjectRepository implements ProjectRepositoryContract {
@@ -117,6 +123,54 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
         ...this.mapProjectSummary(result.records[0]),
         description: String(result.records[0].get('description') ?? '')
       };
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[] | null> {
+    const session = driver.session();
+
+    try {
+      const metaResult = await session.run(
+        `MATCH (:Usuario {userId: $userId})-[:PERTENECE_A]->(p:Proyecto {projectId: $projectId})
+         OPTIONAL MATCH (leader:Usuario)-[:PERTENECE_A {rol: 'lider'}]->(p)
+         OPTIONAL MATCH (p)-[:TIENE_ROL]->(:Rol)-[:REQUIERE]->(requiredSkill:Habilidad)
+         WITH p, leader, collect(DISTINCT coalesce(requiredSkill.normalizedName, toLower(requiredSkill.name))) AS requiredSkillNames
+         RETURN p.projectId AS projectId,
+                leader.userId AS leaderId,
+                [name IN requiredSkillNames WHERE name IS NOT NULL] AS requiredSkillNames
+         LIMIT 1`,
+        { userId, projectId }
+      );
+
+      if (!metaResult.records[0]) {
+        return null;
+      }
+
+      const requiredSkillNames = metaResult.records[0].get('requiredSkillNames') as string[];
+      if (requiredSkillNames.length === 0) {
+        return [];
+      }
+
+      const result = await session.run(
+        `MATCH (candidate:Usuario)-[:TIENE_HABILIDAD]->(skill:Habilidad)
+         WHERE coalesce(skill.normalizedName, toLower(skill.name)) IN $requiredSkillNames
+           AND ($leaderId IS NULL OR candidate.userId <> $leaderId)
+         WITH candidate, collect(DISTINCT skill.name) AS matchedSkills
+         RETURN candidate.userId AS userId,
+                matchedSkills
+         ORDER BY size(matchedSkills) DESC, toLower(candidate.user), candidate.userId`,
+        {
+          requiredSkillNames,
+          leaderId: metaResult.records[0].get('leaderId') as string | null
+        }
+      );
+
+      return result.records.map((record) => ({
+        userId: String(record.get('userId')),
+        matchedSkills: record.get('matchedSkills') as string[]
+      }));
     } finally {
       await session.close();
     }

@@ -1,6 +1,13 @@
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { CreateTaskInput, TASK_STATUSES, Task, TaskReview, TaskStatus, UpdateTaskInput } from './types/task.types.js';
 
+const ALLOWED_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  pendiente: ['en progreso'],
+  'en progreso': ['en revision'],
+  'en revision': ['en progreso', 'completada'],
+  completada: []
+};
+
 export interface TaskRepository {
   isUserInProject(userId: string, projectId: string): Promise<boolean>;
   isUserInProjectByTask(userId: string, taskId: string): Promise<boolean>;
@@ -62,6 +69,11 @@ export class TaskService {
     input: { title?: unknown; description?: unknown; status?: unknown; userAsigned?: unknown; assignedUserId?: unknown }
   ): Promise<Task> {
     await this.ensureTaskAccess(userId, taskId);
+    const currentTask = await this.repository.getTask(taskId);
+
+    if (!currentTask) {
+      throw new NotFoundError('Tarea no encontrada');
+    }
 
     const patch: UpdateTaskInput = { taskId };
     if (Object.prototype.hasOwnProperty.call(input, 'title')) {
@@ -72,6 +84,7 @@ export class TaskService {
     }
     if (Object.prototype.hasOwnProperty.call(input, 'status')) {
       patch.status = this.parseStatus(input.status);
+      this.ensureValidStatusTransition(currentTask.status, patch.status);
     }
     if (
       Object.prototype.hasOwnProperty.call(input, 'assignedUserId') ||
@@ -183,5 +196,15 @@ export class TaskService {
     }
 
     return value as TaskStatus;
+  }
+
+  private ensureValidStatusTransition(currentStatus: TaskStatus, nextStatus: TaskStatus): void {
+    if (currentStatus === nextStatus) {
+      return;
+    }
+
+    if (!ALLOWED_STATUS_TRANSITIONS[currentStatus].includes(nextStatus)) {
+      throw new BadRequestError(`Transicion de estado no permitida: ${currentStatus} -> ${nextStatus}`);
+    }
   }
 }

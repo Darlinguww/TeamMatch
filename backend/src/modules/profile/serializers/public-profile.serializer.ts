@@ -13,6 +13,7 @@ export interface PublicProfileRecord {
   userId: unknown;
   user: unknown;
   experience: unknown;
+  skills?: unknown;
   availability?: unknown;
 }
 
@@ -90,12 +91,16 @@ export function serializePublicProfile(record: PublicProfileRecord): PublicProfi
       .map(serializeAvailabilityDay)
       .filter((item): item is AvailabilityDay => item !== null)
     : [];
+  const skills = Array.isArray(record.skills)
+    ? record.skills.filter((skill): skill is string => typeof skill === 'string' && Boolean(skill.trim()))
+    : [];
 
   return {
     userId: String(record.userId),
     user: typeof record.user === 'string' ? record.user : '',
     experience,
-    availability
+    availability,
+    skills
   };
 }
 
@@ -105,6 +110,7 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
       matchingSkills: 0,
       totalMatchingYears: 0,
       availabilityMatched: false,
+      redundancyPenalty: 0,
       score: 0
     };
   }
@@ -115,6 +121,7 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
     matchingSkills: Number(rawMatch.matchingSkills ?? 0),
     totalMatchingYears: Number(rawMatch.totalMatchingYears ?? 0),
     availabilityMatched: rawMatch.availabilityMatched === true,
+    redundancyPenalty: Number(rawMatch.redundancyPenalty ?? 0),
     score: Number(rawMatch.score ?? 0)
   };
 }

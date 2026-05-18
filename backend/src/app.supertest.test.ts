@@ -10,6 +10,9 @@ describe('API HTTP con Supertest', () => {
       .get('/')
       .expect(200);
 
+    expect(response.headers['x-powered-by']).toBeUndefined();
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['x-frame-options']).toBe('DENY');
     expect(response.body).toEqual({
       status: 'ok',
       service: 'TeamMatch backend'
@@ -39,6 +42,18 @@ describe('API HTTP con Supertest', () => {
         code: 'BAD_REQUEST',
         message: 'Availability text is required'
       }
+    });
+  });
+
+  it('rechaza textos de disponibilidad demasiado largos', async () => {
+    const response = await request(app)
+      .post('/api/availability/parse')
+      .send({ text: 'x'.repeat(1001) })
+      .expect(400);
+
+    expect(response.body.error).toMatchObject({
+      code: 'BAD_REQUEST',
+      message: 'Availability text must be 1000 characters or fewer'
     });
   });
 

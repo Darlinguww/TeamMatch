@@ -119,6 +119,57 @@ describe('TaskService seguridad y estados', () => {
     })).rejects.toBeInstanceOf(BadRequestError);
   });
 
+  it('aplica el flujo pendiente -> en progreso -> en revision -> completada', async () => {
+    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Flujo feliz' });
+
+    await expect(service.updateTask('member-1', task.taskId, {
+      status: 'en progreso'
+    })).resolves.toMatchObject({ status: 'en progreso' });
+
+    await expect(service.updateTask('member-1', task.taskId, {
+      status: 'en revision'
+    })).resolves.toMatchObject({ status: 'en revision' });
+
+    await expect(service.updateTask('member-1', task.taskId, {
+      status: 'completada'
+    })).resolves.toMatchObject({ status: 'completada' });
+  });
+
+  it('permite rechazar una tarea en revision devolviendola a en progreso', async () => {
+    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Rechazo' });
+
+    await service.updateTask('member-1', task.taskId, { status: 'en progreso' });
+    await service.updateTask('member-1', task.taskId, { status: 'en revision' });
+
+    await expect(service.updateTask('member-1', task.taskId, {
+      status: 'en progreso'
+    })).resolves.toMatchObject({ status: 'en progreso' });
+  });
+
+  it('rechaza saltos fuera de la maquina de estados', async () => {
+    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Saltos invalidos' });
+
+    await expect(service.updateTask('member-1', task.taskId, {
+      status: 'en revision'
+    })).rejects.toBeInstanceOf(BadRequestError);
+
+    await expect(service.updateTask('member-1', task.taskId, {
+      status: 'completada'
+    })).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('no permite reabrir una tarea completada', async () => {
+    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Terminal' });
+
+    await service.updateTask('member-1', task.taskId, { status: 'en progreso' });
+    await service.updateTask('member-1', task.taskId, { status: 'en revision' });
+    await service.updateTask('member-1', task.taskId, { status: 'completada' });
+
+    await expect(service.updateTask('member-1', task.taskId, {
+      status: 'en progreso'
+    })).rejects.toBeInstanceOf(BadRequestError);
+  });
+
   it('protege lectura, actualizacion y borrado contra IDOR', async () => {
     const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Privada' });
 

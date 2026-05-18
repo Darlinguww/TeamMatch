@@ -1,12 +1,19 @@
 import { randomUUID } from 'crypto';
 import { BadRequestError, NotFoundError } from '../../shared/errors/HttpErrors.js';
-import { CreateProjectInput, ProjectDetails, ProjectRoleInput, ProjectSummary } from './types/project.types.js';
+import {
+  CreateProjectInput,
+  ProjectDetails,
+  ProjectPhaseOneCandidate,
+  ProjectRoleInput,
+  ProjectSummary
+} from './types/project.types.js';
 
 export interface ProjectRepository {
   findMissingSkillNames(skillNames: string[]): Promise<string[]>;
   createProject(leaderId: string, projectId: string, input: CreateProjectInput): Promise<void>;
   listProjectsForUser(userId: string): Promise<ProjectSummary[]>;
   findProjectForUser(userId: string, projectId: string): Promise<ProjectDetails | null>;
+  findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[] | null>;
 }
 
 export class ProjectService {
@@ -43,6 +50,16 @@ export class ProjectService {
     }
 
     return project;
+  }
+
+  public async findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[]> {
+    const candidates = await this.repository.findPhaseOneCandidates(userId, projectId.trim());
+
+    if (!candidates) {
+      throw new NotFoundError('Project not found');
+    }
+
+    return candidates;
   }
 
   private parseTitle(value: unknown): string {

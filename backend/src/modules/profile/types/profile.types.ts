@@ -47,6 +47,7 @@ export interface PublicProfile {
   user: string;
   experience: SkillExperience[];
   availability: AvailabilityDay[];
+  skills: string[];
 }
 
 export interface ProfileSearchAvailabilityFilter {
@@ -67,6 +68,7 @@ export interface ProfileSearchMatch {
   matchingSkills: number;
   totalMatchingYears: number;
   availabilityMatched: boolean;
+  redundancyPenalty: number;
   score: number;
 }
 

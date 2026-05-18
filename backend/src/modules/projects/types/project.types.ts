@@ -24,3 +24,8 @@ export interface ProjectSummary {
 export interface ProjectDetails extends ProjectSummary {
   description: string;
 }
+
+export interface ProjectPhaseOneCandidate {
+  userId: string;
+  matchedSkills: string[];
+}
