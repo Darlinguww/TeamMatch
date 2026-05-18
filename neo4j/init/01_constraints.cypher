@@ -14,6 +14,14 @@ CREATE CONSTRAINT skill_name_unique IF NOT EXISTS
 FOR (s:Habilidad)
 REQUIRE s.name IS UNIQUE;
 
+CREATE CONSTRAINT skill_normalized_name_unique IF NOT EXISTS
+FOR (s:Habilidad)
+REQUIRE s.normalizedName IS UNIQUE;
+
 CREATE CONSTRAINT role_id_unique IF NOT EXISTS
 FOR (r:Rol)
 REQUIRE r.roleId IS UNIQUE;
+
+CREATE CONSTRAINT task_id_unique IF NOT EXISTS
+FOR (t:Tarea)
+REQUIRE t.taskId IS UNIQUE;
