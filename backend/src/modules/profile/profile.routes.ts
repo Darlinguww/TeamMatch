@@ -9,6 +9,7 @@ import { validateUpdateProfileSkillsDto } from './dto/update-profile-skills.dto.
 import { ProfileController } from './profile.controller.js';
 import { ProfileService } from './profile.service.js';
 import { ProfileRepository } from './repositories/profile.repository.js';
+import upload from '../../shared/middlewares/multerUpload.js';
 
 const router = Router();
 const profileRepository = new ProfileRepository();
@@ -45,6 +46,7 @@ router.put(
   validateDto(validateUpdateProfileSkillsDto),
   profileController.updateSkills
 );
+router.post('/profile/skills', requireAuth, upload, profileController.suggestSkills);
 router.get('/users/search', validateSearchUsersQuery, profileController.searchUsers);
 router.get('/users/:id/profile', profileController.getPublicProfile);
 

@@ -29,3 +29,15 @@ export class ConflictError extends AppError {
     super(message, 409, 'CONFLICT', details);
   }
 }
+
+export class BadGatewayError extends AppError {
+  public constructor(message = 'Bad gateway', details?: ErrorDetails) {
+    super(message, 502, 'BAD_GATEWAY', details);
+  }
+}
+
+export class PayloadTooLargeError extends AppError {
+  public constructor(message = 'Payload too large', details?: ErrorDetails) {
+    super(message, 413, 'PAYLOAD_TOO_LARGE', details);
+  }
+}

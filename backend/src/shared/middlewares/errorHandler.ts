@@ -2,6 +2,7 @@ import { ErrorRequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { isProduction } from '../../config/env.js';
 import { AppError } from '../errors/AppError.js';
+import { PayloadTooLargeError } from '../errors/HttpErrors.js';
 
 const { JsonWebTokenError, TokenExpiredError } = jwt;
 
@@ -23,6 +24,8 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next): void
 
   if (error instanceof AppError) {
     normalizedError = error;
+  } else if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'LIMIT_FILE_SIZE') {
+    normalizedError = new PayloadTooLargeError();
   } else if (error instanceof TokenExpiredError) {
     normalizedError = new AppError('Token expired', 401, 'TOKEN_EXPIRED');
   } else if (error instanceof JsonWebTokenError) {
