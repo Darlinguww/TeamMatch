@@ -1,0 +1,204 @@
+Aquí tienes el archivo `.cursorrules` completamente actualizado. He reorganizado la estructura de carpetas, el stack tecnológico, los módulos y las variables de entorno para reflejar perfectamente la nueva **arquitectura de IA dual descentralizada**, asegurando que las responsabilidades de Gemini y Azure OpenAI queden estrictamente separadas y bajo la convención de no comunicación directa.
+
+---
+
+```markdown
+# TeamMatch — Cursor Rules
+
+## Descripción del proyecto
+TeamMatch es una plataforma de formación inteligente de equipos que utiliza un sistema de IA dual para procesar habilidades, realizar matchmaking automatizado y gestionar proyectos, apoyándose en una base de datos de grafos (Neo4j) para mapear las relaciones entre usuarios, habilidades, proyectos y tareas.
+
+---
+
+## Restricción de arquitectura — Configuración de IA dual (ESTRICTO)
+Este proyecto utiliza dos modelos de IA independientes con responsabilidades distintas y completamente desacopladas. Ninguno de los modelos se comunica directamente con el otro.
+
+1. **Gemini AI:** Solo procesamiento de documentos. Recibe contenido sin procesar en formato PDF/TXT, extrae y normaliza las competencias, la experiencia y la disponibilidad. **Resultado:** JSON estructurado. Nunca aplica reglas de negocio. La salida de Gemini alimenta directamente a Neo4j.
+2. **gpt-4.1-mini (Azure OpenAI):** Solo inteligencia empresarial. Recibe datos estructurados del grafo (Neo4j); nunca texto o documentos sin procesar de los usuarios. Aplica reglas de emparejamiento y genera propuestas de equipos con puntuaciones de afinidad y justificaciones.
+
+> **Regla de oro:** La salida de Gemini alimenta a Neo4j. Neo4j alimenta a gpt-4.1-mini. Siempre que modifiques la capa de IA, confirma qué modelo estás modificando antes de escribir código.
+
+---
+
+## Stack tecnológico
+
+### Frontend
+- React + Vite + TypeScript
+- Tailwind CSS para estilos
+- React Router para navegación
+- Lucide React para iconos
+
+### Backend
+- Node.js + Express + TypeScript
+- JWT para autenticación
+- bcrypt para hashing de contraseñas (mínimo 10 rondas)
+
+### Base de datos
+- Neo4j (base de datos de grafos)
+- Cypher Query Language para consultas
+
+### Servicios de IA
+- **Gemini API (LLM/SLM):** Extracción de entidades y normalización de texto a JSON estructurado.
+- **Azure OpenAI (gpt-4.1-mini):** Motor de recomendación, afinidad y matchmaking empresarial.
+
+### DevOps
+- Docker + Docker Compose
+- GitHub Actions para CI/CD
+
+---
+
+## Estructura de carpetas esperada
+
+
+```
+
+TeamMatch/
+├── frontend/          # React + Vite + TypeScript
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── hooks/
+│   │   ├── services/
+│   │   └── types/
+├── backend/           # Node.js + Express + TypeScript
+│   ├── src/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   ├── middleware/
+│   │   └── types/
+├── ai-service/        # Servicios de IA independientes
+│   ├── src/
+│   │   ├── prompts/
+│   │   ├── services/
+│   │   │   ├── gemini.service.ts       # Extracción y procesamiento de documentos
+│   │   │   └── azure-openai.service.ts # Algoritmo de matchmaking y afinidad
+│   │   └── types/
+├── docker-compose.yml
+└── .env.example
+
+```
+
+---
+
+## Convenciones de código
+
+### General
+- Usar TypeScript estricto en todo el proyecto (`strict: true`)
+- Nombres de variables y funciones en camelCase
+- Nombres de componentes React en PascalCase
+- Nombres de archivos en kebab-case
+- Siempre tipar correctamente, evitar el uso de `any`
+- Comentarios en español
+
+### Frontend (React + TypeScript)
+- Usar functional components con hooks, nunca class components
+- Custom hooks en `/hooks` con prefijo `use`
+- Separar la lógica de negocio de los componentes UI
+- Usar React Router v6 para navegación
+- Tailwind CSS para todos los estilos, evitar CSS inline
+- Lucide React para todos los iconos
+
+### Backend (Node.js + Express)
+- Arquitectura por capas: routes → controllers → services → database
+- Siempre validar y sanitizar inputs del usuario
+- Manejar errores con try/catch y middleware centralizado de errores
+- JWT expira en 24h
+- bcrypt con mínimo 10 rondas para contraseñas
+
+### Neo4j / Cypher
+- Nombres de nodos en PascalCase: `(:Usuario)`, `(:Habilidad)`, `(:Proyecto)`
+- Nombres de relaciones en SNAKE_CASE mayúsculas: `[:TIENE_HABILIDAD]`, `[:PERTENECE_A]`
+- Siempre usar parámetros en queries Cypher, nunca interpolación directa
+- Ejemplo correcto: `MATCH (u:Usuario {id: $userId})`
+
+### Modelo de datos (Neo4j)
+Nodos principales:
+- `Usuario`: id, nombre, email, passwordHash, creadoEn
+- `Habilidad`: id, nombre, categoria, nivel
+- `Proyecto`: id, titulo, descripcion, estado, creadoEn
+- `Tarea`: id, titulo, descripcion, estado (Pendiente|EnProceso|EnRevision|Completado)
+- `Experiencia`: id, rol, años, descripcion
+- `Disponibilidad`: id, dias, franjaHoraria, horasSemanales
+
+Relaciones:
+- `(:Usuario)-[:TIENE_HABILIDAD {nivel}]->(:Habilidad)`
+- `(:Usuario)-[:PERTENECE_A {rol}]->(:Proyecto)`
+- `(:Usuario)-[:ASIGNADO_A {fechaAsignacion}]->(:Tarea)`
+- `(:Usuario)-[:POSEE_EXPERIENCIA]->(:Experiencia)`
+- `(:Usuario)-[:TIENE_DISPONIBILIDAD]->(:Disponibilidad)`
+- `(:Proyecto)-[:REQUIERE {prioridad}]->(:Habilidad)`
+- `(:Proyecto)-[:CONTIENE]->(:Tarea)`
+- `(:Tarea)-[:EVALUO {puntaje, comentario}]->(:Usuario)`
+
+---
+
+## Módulos del sistema
+
+- **M1 - Autenticación:** Registro, login, JWT, bcrypt.
+- **M2 - Perfiles e Ingesta:** Carga de CVs (PDF/TXT), procesamiento exclusivo con **Gemini** para extracción/normalización e inserción en Neo4j.
+- **M3 - Matchmaking:** Consulta de datos estructurados de Neo4j y envío directo a **gpt-4.1-mini** en Azure para generación de propuestas y cálculo de afinidad.
+- **M4 - Proyectos:** Creación, definición de requisitos y configuración de proyectos.
+- **M5 - Equipos y Tareas:** Tablero Kanban, asignaciones y flujo de aprobación de entregables.
+- **M6 - Retroalimentación:** Evaluaciones post-proyecto y métricas de desempeño.
+
+---
+
+## Seguridad
+- Nunca exponer contraseñas ni tokens en logs.
+- Nunca hardcodear API keys o secrets en el código.
+- Usar variables de entorno para toda configuración sensible.
+- Validar JWT en cada endpoint protegido mediante middleware.
+- Archivos cargados (PDF/TXT) solo se procesan en memoria por Gemini, **nunca se almacenan permanentemente**.
+
+---
+
+## Requerimientos no funcionales a tener en cuenta
+- El motor de procesamiento de documentos (Gemini) y el de matchmaking (Azure) deben responder en ≤ 20 segundos para lotes de 100 perfiles.
+- Disponibilidad del 99% durante períodos académicos.
+- Neo4j debe soportar hasta 1,000 nodos Usuario y 50,000 relaciones.
+- El usuario debe poder completar su perfil mediante carga de archivos en ≤ 5 minutos.
+
+---
+
+## Variables de entorno necesarias (.env)
+```env
+# Backend
+PORT=3000
+JWT_SECRET=
+JWT_EXPIRES_IN=24h
+BCRYPT_ROUNDS=10
+
+# Neo4j
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=
+
+# Gemini AI (Procesamiento de Documentos)
+GEMINI_API_KEY=
+
+# Azure OpenAI (gpt-4.1-mini - Matchmaking e Inteligencia)
+AZURE_OPENAI_API_KEY=
+AZURE_OPENAI_ENDPOINT=
+AZURE_OPENAI_DEPLOYMENT_NAME=
+
+# Frontend
+VITE_API_URL=http://localhost:3000
+
+```
+
+---
+
+## Lo que NO hacer
+
+* No usar `any` en TypeScript.
+* No almacenar archivos subidos por el usuario de forma permanente.
+* No hardcodear credenciales ni API keys.
+* No mezclar lógica de negocio dentro de los componentes React.
+* No hacer consultas Cypher con interpolación de strings directa.
+* No ignorar errores con bloques catch vacíos.
+* **No permitir bajo ninguna circunstancia que el servicio de Gemini envíe datos directos o llame al servicio de Azure OpenAI (o viceversa). Todo flujo pasa obligatoriamente por Neo4j.**
+
+```
+
+```
