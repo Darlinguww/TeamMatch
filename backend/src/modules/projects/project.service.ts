@@ -29,6 +29,12 @@ export interface ProjectRepository {
   findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[] | null>;
   findPhaseTwoCandidates(userId: string, projectId: string, weights: ProjectMatchWeights): Promise<ProjectPhaseTwoCandidate[] | null>;
   rebuildSemanticIndex(input: { similarityCutoff: number; topK: number }): Promise<SemanticIndexRebuildResult>;
+  // New methods for feedback and project lifecycle
+  findProjectLeader(projectId: string): Promise<string | null>;
+  setProjectStatusAndFeedback(projectId: string, status: string, feedbackEnabled: boolean, feedbackStart: string | null, feedbackEnd: string | null): Promise<void>;
+  isUserMemberOfProject(userId: string, projectId: string): Promise<boolean>;
+  hasFeedbackBetweenUsers(projectId: string, fromUserId: string, toUserId: string): Promise<boolean>;
+  createFeedbackRelationship(projectId: string, fromUserId: string, toUserId: string, score: number, comment: string | null, createdAt: string): Promise<void>;
 }
 
 export class ProjectService {
