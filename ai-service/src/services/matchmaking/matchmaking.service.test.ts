@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runMatchmaking } from './matchmaking.service.js';
-import type { CandidateProfile, ProjectRequirements } from './matchmaking.types.js';
+import type { CandidateProfile, ProjectRequirements, MatchmakingRequest } from './matchmaking.types.js';
 
 const mockCreate = vi.fn();
 
@@ -65,7 +65,13 @@ describe('runMatchmaking', () => {
       ],
     });
 
-    const result = await runMatchmaking(project, candidates);
+    const request: MatchmakingRequest = {
+      project,
+      candidates,
+      userInstructions: undefined,
+    };
+
+    const result = await runMatchmaking(request);
 
     expect(result.projectId).toBe('proj-1');
     expect(result.proposals).toHaveLength(1);
@@ -77,7 +83,13 @@ describe('runMatchmaking', () => {
   it('retorna proposals vacías cuando Azure OpenAI falla', async () => {
     mockCreate.mockRejectedValue(new Error('Error de red'));
 
-    const result = await runMatchmaking(project, candidates);
+    const request: MatchmakingRequest = {
+      project,
+      candidates,
+      userInstructions: 'Priorizar perfiles senior con experiencia en cloud',
+    };
+
+    const result = await runMatchmaking(request);
 
     expect(result).toMatchObject({
       projectId: 'proj-1',
