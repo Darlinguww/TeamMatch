@@ -99,6 +99,40 @@ export function serializePublicProfile(record: PublicProfileRecord): PublicProfi
   };
 }
 
+function serializeDomainWeights(domainWeights: unknown): Record<string, number> {
+  if (Array.isArray(domainWeights)) {
+    return domainWeights.reduce<Record<string, number>>((weights, item) => {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        return weights;
+      }
+
+      const rawItem = item as Record<string, unknown>;
+      const domain = typeof rawItem.domain === 'string' ? rawItem.domain : '';
+      const weight = Number(rawItem.weight ?? 0);
+
+      if (domain && Number.isFinite(weight) && weight > 0) {
+        weights[domain] = weight;
+      }
+
+      return weights;
+    }, {});
+  }
+
+  if (typeof domainWeights !== 'object' || domainWeights === null) {
+    return {};
+  }
+
+  return Object.entries(domainWeights as Record<string, unknown>).reduce<Record<string, number>>((weights, [domain, value]) => {
+    const weight = Number(value ?? 0);
+
+    if (domain && Number.isFinite(weight) && weight > 0) {
+      weights[domain] = weight;
+    }
+
+    return weights;
+  }, {});
+}
+
 function serializeSearchMatch(match: unknown): ProfileSearchMatch {
   if (typeof match !== 'object' || match === null || Array.isArray(match)) {
     return {
@@ -106,7 +140,8 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
       totalMatchingYears: 0,
       availabilityMatched: false,
       score: 0,
-      isNeutralScore: false
+      isNeutralScore: false,
+      domainWeights: {}
     };
   }
 
@@ -117,7 +152,8 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
     totalMatchingYears: Number(rawMatch.totalMatchingYears ?? 0),
     availabilityMatched: rawMatch.availabilityMatched === true,
     score: Number(rawMatch.score ?? 0),
-    isNeutralScore: rawMatch.isNeutralScore === true
+    isNeutralScore: rawMatch.isNeutralScore === true,
+    domainWeights: serializeDomainWeights(rawMatch.domainWeights)
   };
 }
 

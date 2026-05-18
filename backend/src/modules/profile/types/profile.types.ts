@@ -63,12 +63,15 @@ export interface SearchUsersFilters {
   offset: number;
 }
 
+export type ProfileSearchDomainWeights = Record<string, number>;
+
 export interface ProfileSearchMatch {
   matchingSkills: number;
   totalMatchingYears: number;
   availabilityMatched: boolean;
   score: number;
   isNeutralScore: boolean;
+  domainWeights: ProfileSearchDomainWeights;
 }
 
 export interface PublicProfileSearchResult extends PublicProfile {

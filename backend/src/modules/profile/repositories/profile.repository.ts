@@ -10,6 +10,24 @@ import {
 } from '../types/profile.types.js';
 
 const NEUTRAL_ONBOARDING_SCORE = 50.0;
+const DOMAIN_SKILL_WEIGHT = 10.0;
+const MAX_DOMAIN_WEIGHT = 20.0;
+const MAX_DOMAIN_WEIGHT_BONUS = 40.0;
+
+const TECHNOLOGY_DOMAIN_SKILLS = {
+  frontend: ['react', 'vue', 'angular', 'css', 'html', 'javascript', 'typescript'],
+  backend: ['node.js', 'nodejs', 'express', 'spring', 'django', 'java'],
+  mobile: ['flutter', 'react native', 'kotlin', 'swift'],
+  ai: ['python', 'tensorflow', 'pytorch', 'machine learning'],
+  devops: ['docker', 'kubernetes', 'aws', 'azure', 'gcp']
+} as const;
+
+const TECHNOLOGY_DOMAIN_WEIGHTS = Object.entries(TECHNOLOGY_DOMAIN_SKILLS).map(([domain, skills]) => ({
+  domain,
+  skills: [...skills],
+  perSkillWeight: DOMAIN_SKILL_WEIGHT,
+  maxDomainWeight: MAX_DOMAIN_WEIGHT
+}));
 
 export class ProfileRepository {
   public async replaceUserExperience(userId: string, experience: SkillExperienceInput[]): Promise<PublicProfile | null> {
@@ -220,13 +238,49 @@ export class ProfileRepository {
          WITH u,
               experience,
               availabilitySlots,
+              matchingExperience,
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              [domainWeight IN $technologyDomainWeights |
+               {
+                 domain: domainWeight.domain,
+                 weight: CASE
+                   WHEN size([item IN matchingExperience WHERE toLower(item.skillName) IN domainWeight.skills]) * domainWeight.perSkillWeight > domainWeight.maxDomainWeight
+                   THEN domainWeight.maxDomainWeight
+                   ELSE size([item IN matchingExperience WHERE toLower(item.skillName) IN domainWeight.skills]) * domainWeight.perSkillWeight
+                 END
+               }] AS allDomainWeights
+         WITH u,
+              experience,
+              availabilitySlots,
+              matchingSkills,
+              totalMatchingYears,
+              availabilityMatched,
+              [domainWeight IN allDomainWeights WHERE domainWeight.weight > 0.0] AS domainWeights
+         WITH u,
+              experience,
+              availabilitySlots,
+              matchingSkills,
+              totalMatchingYears,
+              availabilityMatched,
+              domainWeights,
+              reduce(domainWeightBonus = 0.0, domainWeight IN domainWeights | domainWeightBonus + domainWeight.weight) AS domainWeightBonus
+         WITH u,
+              experience,
+              availabilitySlots,
+              matchingSkills,
+              totalMatchingYears,
+              availabilityMatched,
+              domainWeights,
               (size($skills) = 0 AND $minYears IS NULL AND size(experience) = 0) AS isNeutralScore,
               (matchingSkills * 100.0) +
               (totalMatchingYears * 10.0) +
-              CASE WHEN $hasAvailabilityFilter = true AND availabilityMatched THEN 50.0 ELSE 0.0 END AS rawScore
+              CASE WHEN $hasAvailabilityFilter = true AND availabilityMatched THEN 50.0 ELSE 0.0 END +
+              CASE
+                WHEN domainWeightBonus > $maxDomainWeightBonus THEN $maxDomainWeightBonus
+                ELSE domainWeightBonus
+              END AS rawScore
          WITH u,
               experience,
               [day IN $weekdays
@@ -239,6 +293,7 @@ export class ProfileRepository {
               totalMatchingYears,
               availabilityMatched,
               isNeutralScore,
+              domainWeights,
               CASE
                 WHEN isNeutralScore AND rawScore < $neutralOnboardingScore THEN $neutralOnboardingScore
                 ELSE rawScore
@@ -252,7 +307,8 @@ export class ProfileRepository {
                   totalMatchingYears: totalMatchingYears,
                   availabilityMatched: availabilityMatched,
                   score: score,
-                  isNeutralScore: isNeutralScore
+                  isNeutralScore: isNeutralScore,
+                  domainWeights: domainWeights
                 } AS match
          ORDER BY score DESC, matchingSkills DESC, totalMatchingYears DESC, toLower(u.user), u.userId
          SKIP $offset
@@ -264,6 +320,8 @@ export class ProfileRepository {
           availabilityDay: filters.availability?.day ?? null,
           availabilityStart: filters.availability?.start ?? null,
           availabilityEnd: filters.availability?.end ?? null,
+          technologyDomainWeights: TECHNOLOGY_DOMAIN_WEIGHTS,
+          maxDomainWeightBonus: MAX_DOMAIN_WEIGHT_BONUS,
           weekdays: [...WEEKDAYS],
           neutralOnboardingScore: NEUTRAL_ONBOARDING_SCORE,
           offset: filters.offset,
