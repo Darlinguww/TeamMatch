@@ -9,6 +9,8 @@ import {
   WEEKDAYS
 } from '../types/profile.types.js';
 
+const NEUTRAL_ONBOARDING_SCORE = 50.0;
+
 export class ProfileRepository {
   public async replaceUserExperience(userId: string, experience: SkillExperienceInput[]): Promise<PublicProfile | null> {
     const session = driver.session();
@@ -221,9 +223,10 @@ export class ProfileRepository {
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              (size($skills) = 0 AND $minYears IS NULL AND size(experience) = 0) AS isNeutralScore,
               (matchingSkills * 100.0) +
               (totalMatchingYears * 10.0) +
-              CASE WHEN $hasAvailabilityFilter = true AND availabilityMatched THEN 50.0 ELSE 0.0 END AS score
+              CASE WHEN $hasAvailabilityFilter = true AND availabilityMatched THEN 50.0 ELSE 0.0 END AS rawScore
          WITH u,
               experience,
               [day IN $weekdays
@@ -235,7 +238,11 @@ export class ProfileRepository {
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
-              score
+              isNeutralScore,
+              CASE
+                WHEN isNeutralScore AND rawScore < $neutralOnboardingScore THEN $neutralOnboardingScore
+                ELSE rawScore
+              END AS score
          RETURN u.userId AS userId,
                 u.user AS user,
                 experience,
@@ -244,7 +251,8 @@ export class ProfileRepository {
                   matchingSkills: matchingSkills,
                   totalMatchingYears: totalMatchingYears,
                   availabilityMatched: availabilityMatched,
-                  score: score
+                  score: score,
+                  isNeutralScore: isNeutralScore
                 } AS match
          ORDER BY score DESC, matchingSkills DESC, totalMatchingYears DESC, toLower(u.user), u.userId
          SKIP $offset
@@ -257,6 +265,7 @@ export class ProfileRepository {
           availabilityStart: filters.availability?.start ?? null,
           availabilityEnd: filters.availability?.end ?? null,
           weekdays: [...WEEKDAYS],
+          neutralOnboardingScore: NEUTRAL_ONBOARDING_SCORE,
           offset: filters.offset,
           limit: filters.limit
         }

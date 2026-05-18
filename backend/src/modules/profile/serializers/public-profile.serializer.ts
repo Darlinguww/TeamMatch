@@ -105,7 +105,8 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
       matchingSkills: 0,
       totalMatchingYears: 0,
       availabilityMatched: false,
-      score: 0
+      score: 0,
+      isNeutralScore: false
     };
   }
 
@@ -115,7 +116,8 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
     matchingSkills: Number(rawMatch.matchingSkills ?? 0),
     totalMatchingYears: Number(rawMatch.totalMatchingYears ?? 0),
     availabilityMatched: rawMatch.availabilityMatched === true,
-    score: Number(rawMatch.score ?? 0)
+    score: Number(rawMatch.score ?? 0),
+    isNeutralScore: rawMatch.isNeutralScore === true
   };
 }
 

@@ -68,6 +68,7 @@ export interface ProfileSearchMatch {
   totalMatchingYears: number;
   availabilityMatched: boolean;
   score: number;
+  isNeutralScore: boolean;
 }
 
 export interface PublicProfileSearchResult extends PublicProfile {
