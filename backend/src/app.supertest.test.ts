@@ -108,4 +108,25 @@ describe('API HTTP con Supertest', () => {
       .send({ experience: [] })
       .expect(404);
   });
+
+  it('protege el scoring de Fase 2 detras de autenticacion', async () => {
+    const response = await request(app)
+      .get('/projects/project-1/match/phase2')
+      .expect(401);
+
+    expect(response.body.error).toMatchObject({
+      code: 'UNAUTHORIZED'
+    });
+  });
+
+  it('protege la reconstruccion del indice semantico GDS detras de autenticacion', async () => {
+    const response = await request(app)
+      .post('/projects/match/phase2/rebuild-semantic-index')
+      .send({ similarityCutoff: 0.35, topK: 10 })
+      .expect(401);
+
+    expect(response.body.error).toMatchObject({
+      code: 'UNAUTHORIZED'
+    });
+  });
 });

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { env } from '../../config/env.js';
+import { ForbiddenError } from '../../shared/errors/HttpErrors.js';
 import { requireAuth } from '../auth/auth.routes.js';
 import { asyncHandler } from '../../shared/middlewares/asyncHandler.js';
 import { Neo4jTaskRepository } from '../tasks/repositories/task.repository.js';
@@ -28,6 +30,21 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
 router.get('/:id/match/phase1', requireAuth, asyncHandler(async (req, res) => {
   const candidates = await projectService.findPhaseOneCandidates(req.user!.userId, req.params.id);
   res.status(200).json({ candidates });
+}));
+
+router.post('/match/phase2/rebuild-semantic-index', requireAuth, asyncHandler(async (req, res) => {
+  const rebuildSecret = req.header('X-GDS-Rebuild-Secret')?.trim() ?? '';
+  if (!env.gdsRebuildSecret || rebuildSecret !== env.gdsRebuildSecret) {
+    throw new ForbiddenError('GDS semantic index rebuild is restricted');
+  }
+
+  const result = await projectService.rebuildSemanticIndex(req.body ?? {});
+  res.status(200).json(result);
+}));
+
+router.get('/:id/match/phase2', requireAuth, asyncHandler(async (req, res) => {
+  const result = await projectService.findPhaseTwoCandidates(req.user!.userId, req.params.id);
+  res.status(200).json(result);
 }));
 
 router.post('/:projectId/tasks', requireAuth, asyncHandler(async (req, res) => {

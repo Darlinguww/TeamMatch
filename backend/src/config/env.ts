@@ -64,6 +64,7 @@ export const env = {
   loginBlockDurationMs: readNumberEnv('LOGIN_BLOCK_DURATION_MS', 900000),
   geminiApiKey: process.env.GEMINI_API_KEY?.trim() || '',
   geminiModel: readStringEnv('GEMINI_MODEL', 'gemini-1.5-flash'),
+  gdsRebuildSecret: process.env.GDS_REBUILD_SECRET?.trim() || '',
   processingTimeoutMs: readNumberEnv('PROCESSING_TIMEOUT_MS', 30000),
   corsOrigins,
   neo4j: {

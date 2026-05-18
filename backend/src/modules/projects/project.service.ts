@@ -1,12 +1,25 @@
 import { randomUUID } from 'crypto';
+import { AppError } from '../../shared/errors/AppError.js';
 import { BadRequestError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import {
   CreateProjectInput,
   ProjectDetails,
+  ProjectMatchWeights,
   ProjectPhaseOneCandidate,
+  ProjectPhaseTwoCandidate,
   ProjectRoleInput,
+  SemanticIndexRebuildInput,
+  SemanticIndexRebuildResult,
   ProjectSummary
 } from './types/project.types.js';
+
+const EXACT_SKILL_WEIGHT = 1;
+const SIMILAR_SKILL_WEIGHT = 0.65;
+const COMPLEMENTARY_SKILL_WEIGHT = 0.45;
+const DEFAULT_SIMILARITY_CUTOFF = 0.35;
+const DEFAULT_TOP_K = 10;
+const MIN_TOP_K = 1;
+const MAX_TOP_K = 50;
 
 export interface ProjectRepository {
   findMissingSkillNames(skillNames: string[]): Promise<string[]>;
@@ -14,6 +27,8 @@ export interface ProjectRepository {
   listProjectsForUser(userId: string): Promise<ProjectSummary[]>;
   findProjectForUser(userId: string, projectId: string): Promise<ProjectDetails | null>;
   findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[] | null>;
+  findPhaseTwoCandidates(userId: string, projectId: string, weights: ProjectMatchWeights): Promise<ProjectPhaseTwoCandidate[] | null>;
+  rebuildSemanticIndex(input: { similarityCutoff: number; topK: number }): Promise<SemanticIndexRebuildResult>;
 }
 
 export class ProjectService {
@@ -62,6 +77,38 @@ export class ProjectService {
     return candidates;
   }
 
+  public async findPhaseTwoCandidates(userId: string, projectId: string): Promise<{
+    candidates: ProjectPhaseTwoCandidate[];
+    weights: ProjectMatchWeights;
+  }> {
+    const weights = {
+      exact: EXACT_SKILL_WEIGHT,
+      similar: SIMILAR_SKILL_WEIGHT,
+      complementary: COMPLEMENTARY_SKILL_WEIGHT
+    };
+    const candidates = await this.repository.findPhaseTwoCandidates(userId, projectId.trim(), weights);
+
+    if (!candidates) {
+      throw new NotFoundError('Project not found');
+    }
+
+    return { candidates, weights };
+  }
+
+  public async rebuildSemanticIndex(input: SemanticIndexRebuildInput): Promise<SemanticIndexRebuildResult> {
+    const rebuildInput = {
+      similarityCutoff: this.parseSimilarityCutoff(input.similarityCutoff),
+      topK: this.parseTopK(input.topK)
+    };
+
+    try {
+      return await this.repository.rebuildSemanticIndex(rebuildInput);
+    } catch (error) {
+      console.error('ProjectService.rebuildSemanticIndex', error);
+      throw new AppError('No se pudo recalcular el indice semantico con GDS', 503, 'GDS_UNAVAILABLE');
+    }
+  }
+
   private parseTitle(value: unknown): string {
     if (typeof value !== 'string' || !value.trim()) {
       throw new BadRequestError('Titulo es requerido');
@@ -100,5 +147,31 @@ export class ProjectService {
 
       return { role, skills };
     });
+  }
+
+  private parseSimilarityCutoff(value: unknown): number {
+    if (value === undefined || value === null || value === '') {
+      return DEFAULT_SIMILARITY_CUTOFF;
+    }
+
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue) || numericValue < 0 || numericValue > 1) {
+      throw new BadRequestError('similarityCutoff debe ser un numero entre 0 y 1');
+    }
+
+    return numericValue;
+  }
+
+  private parseTopK(value: unknown): number {
+    if (value === undefined || value === null || value === '') {
+      return DEFAULT_TOP_K;
+    }
+
+    const numericValue = Number(value);
+    if (!Number.isInteger(numericValue) || numericValue < MIN_TOP_K || numericValue > MAX_TOP_K) {
+      throw new BadRequestError(`topK debe ser un entero entre ${MIN_TOP_K} y ${MAX_TOP_K}`);
+    }
+
+    return numericValue;
   }
 }
