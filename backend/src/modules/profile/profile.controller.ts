@@ -72,6 +72,11 @@ export class ProfileController {
     res.status(200).json({ profile });
   });
 
+  public getUserReputation = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const reputation = await this.profileService.getUserReputation(req.params.id);
+    res.status(200).json({ reputation });
+  });
+
   public searchUsers = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const searchQuery = res.locals.searchUsersQuery as SearchUsersDto | undefined;
 

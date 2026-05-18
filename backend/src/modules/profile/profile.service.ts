@@ -4,7 +4,7 @@ import { UpdateProfileAvailabilityDto } from './dto/update-profile-availability.
 import { UpdateProfileExperienceDto } from './dto/update-profile-experience.dto.js';
 import { UpdateProfileSkillsDto } from './dto/update-profile-skills.dto.js';
 import { ProfileRepository } from './repositories/profile.repository.js';
-import { PublicProfile, PublicProfileSearchResult } from './types/profile.types.js';
+import { PublicProfile, PublicProfileSearchResult, UserReputation } from './types/profile.types.js';
 
 const PROMPT_INJECTION_PATTERNS = [
   /ignore (?:all )?previous instructions/i,
@@ -181,6 +181,52 @@ export class ProfileService {
     }
 
     return profile;
+  }
+
+  public async getUserReputation(userId: string): Promise<UserReputation> {
+    const profile = await this.getPublicProfile(userId);
+
+    const skills = (profile.skills || []).map((skill) => skill.trim().toLowerCase()).filter(Boolean);
+    const skillsCount = skills.length;
+    const skillsScore = Math.min(skillsCount * 10, 100);
+
+    const totalExperienceYears = (profile.experience || []).reduce(
+      (sum, experience) => sum + Math.max(0, experience.yearsOfExperience || 0),
+      0
+    );
+    const experienceScore = Math.min(totalExperienceYears * 10, 100);
+
+    const availabilityDays = new Set((profile.availability || []).map((day) => day.day)).size;
+    const availabilityScore = Math.round((availabilityDays / 7) * 100);
+
+    const experienceSkillSet = new Set(
+      (profile.experience || []).map((experience) => experience.skillName.trim().toLowerCase()).filter(Boolean)
+    );
+    const experienceAlignmentScore =
+      skillsCount === 0
+        ? 0
+        : Math.round(
+            (skills.filter((skill) => experienceSkillSet.has(skill)).length / skillsCount) * 100
+          );
+
+    const reputationScore = Math.round(
+      ((skillsScore * 0.3 + experienceScore * 0.3 + availabilityScore * 0.2 + experienceAlignmentScore * 0.2) * 100) / 100
+    );
+
+    return {
+      userId: profile.userId,
+      user: profile.user,
+      reputationScore,
+      breakdown: {
+        skillsCount,
+        skillsScore,
+        totalExperienceYears,
+        experienceScore,
+        availabilityDays,
+        availabilityScore,
+        experienceAlignmentScore
+      }
+    };
   }
 
   public async searchUsers(filters: SearchUsersDto): Promise<PublicProfileSearchResult[]> {

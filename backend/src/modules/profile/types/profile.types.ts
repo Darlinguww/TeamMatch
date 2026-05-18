@@ -72,6 +72,23 @@ export interface ProfileSearchMatch {
   score: number;
 }
 
+export interface ReputationBreakdown {
+  skillsCount: number;
+  skillsScore: number;
+  totalExperienceYears: number;
+  experienceScore: number;
+  availabilityDays: number;
+  availabilityScore: number;
+  experienceAlignmentScore: number;
+}
+
+export interface UserReputation {
+  userId: string;
+  user: string;
+  reputationScore: number;
+  breakdown: ReputationBreakdown;
+}
+
 export interface PublicProfileSearchResult extends PublicProfile {
   match: ProfileSearchMatch;
 }
