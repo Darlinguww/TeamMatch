@@ -70,6 +70,8 @@ export interface ProfileSearchMatch {
   totalMatchingYears: number;
   availabilityMatched: boolean;
   score: number;
+  reputationScore: number;
+  reputationWeightApplied: number;
   isNeutralScore: boolean;
   domainWeights: ProfileSearchDomainWeights;
 }

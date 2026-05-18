@@ -140,6 +140,8 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
       totalMatchingYears: 0,
       availabilityMatched: false,
       score: 0,
+      reputationScore: 0,
+      reputationWeightApplied: 0,
       isNeutralScore: false,
       domainWeights: {}
     };
@@ -152,6 +154,8 @@ function serializeSearchMatch(match: unknown): ProfileSearchMatch {
     totalMatchingYears: Number(rawMatch.totalMatchingYears ?? 0),
     availabilityMatched: rawMatch.availabilityMatched === true,
     score: Number(rawMatch.score ?? 0),
+    reputationScore: Number(rawMatch.reputationScore ?? 0),
+    reputationWeightApplied: Number(rawMatch.reputationWeightApplied ?? 0),
     isNeutralScore: rawMatch.isNeutralScore === true,
     domainWeights: serializeDomainWeights(rawMatch.domainWeights)
   };

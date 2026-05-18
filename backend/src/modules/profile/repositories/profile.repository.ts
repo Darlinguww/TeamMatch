@@ -13,6 +13,9 @@ const NEUTRAL_ONBOARDING_SCORE = 50.0;
 const DOMAIN_SKILL_WEIGHT = 10.0;
 const MAX_DOMAIN_WEIGHT = 20.0;
 const MAX_DOMAIN_WEIGHT_BONUS = 40.0;
+const MIN_EVALUATION_SCORE = 0.0;
+const MAX_EVALUATION_SCORE = 5.0;
+const MAX_REPUTATION_WEIGHT = 0.2;
 
 const TECHNOLOGY_DOMAIN_SKILLS = {
   frontend: ['react', 'vue', 'angular', 'css', 'html', 'javascript', 'typescript'],
@@ -235,6 +238,23 @@ export class ProfileRepository {
               reduce(total = 0.0, item IN matchingExperience | total + coalesce(item.yearsOfExperience, 0.0)) AS totalMatchingYears
          WHERE ((size($skills) = 0 AND $minYears IS NULL) OR matchingSkills > 0)
            AND availabilityMatched
+         CALL {
+           WITH u
+           OPTIONAL MATCH (:Usuario)-[evaluation:EVALUO]->(u)
+           WITH [rawScore IN collect(evaluation.puntaje) WHERE rawScore IS NOT NULL | coalesce(toFloat(rawScore), 0.0)] AS numericScores
+           WITH [score IN numericScores |
+             CASE
+               WHEN score < $minEvaluationScore THEN $minEvaluationScore
+               WHEN score > $maxEvaluationScore THEN $maxEvaluationScore
+               ELSE score
+             END
+           ] AS boundedScores
+           WITH CASE
+             WHEN size(boundedScores) = 0 THEN 0.0
+             ELSE reduce(total = 0.0, score IN boundedScores | total + score) / size(boundedScores)
+           END AS averageReputationScore
+           RETURN averageReputationScore / $maxEvaluationScore AS reputationScore
+         }
          WITH u,
               experience,
               availabilitySlots,
@@ -242,6 +262,7 @@ export class ProfileRepository {
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              reputationScore,
               [domainWeight IN $technologyDomainWeights |
                {
                  domain: domainWeight.domain,
@@ -257,6 +278,7 @@ export class ProfileRepository {
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              reputationScore,
               [domainWeight IN allDomainWeights WHERE domainWeight.weight > 0.0] AS domainWeights
          WITH u,
               experience,
@@ -264,6 +286,7 @@ export class ProfileRepository {
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              reputationScore,
               domainWeights,
               reduce(domainWeightBonus = 0.0, domainWeight IN domainWeights | domainWeightBonus + domainWeight.weight) AS domainWeightBonus
          WITH u,
@@ -272,6 +295,7 @@ export class ProfileRepository {
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              reputationScore,
               domainWeights,
               (size($skills) = 0 AND $minYears IS NULL AND size(experience) = 0) AS isNeutralScore,
               (matchingSkills * 100.0) +
@@ -293,11 +317,34 @@ export class ProfileRepository {
               totalMatchingYears,
               availabilityMatched,
               isNeutralScore,
+              reputationScore,
               domainWeights,
               CASE
                 WHEN isNeutralScore AND rawScore < $neutralOnboardingScore THEN $neutralOnboardingScore
                 ELSE rawScore
-              END AS score
+              END AS baseScore
+         WITH u,
+              experience,
+              availability,
+              matchingSkills,
+              totalMatchingYears,
+              availabilityMatched,
+              isNeutralScore,
+              reputationScore,
+              domainWeights,
+              baseScore * $maxReputationWeight * reputationScore AS reputationWeightApplied,
+              baseScore
+         WITH u,
+              experience,
+              availability,
+              matchingSkills,
+              totalMatchingYears,
+              availabilityMatched,
+              isNeutralScore,
+              reputationScore,
+              reputationWeightApplied,
+              domainWeights,
+              baseScore + reputationWeightApplied AS score
          RETURN u.userId AS userId,
                 u.user AS user,
                 experience,
@@ -307,6 +354,8 @@ export class ProfileRepository {
                   totalMatchingYears: totalMatchingYears,
                   availabilityMatched: availabilityMatched,
                   score: score,
+                  reputationScore: reputationScore,
+                  reputationWeightApplied: reputationWeightApplied,
                   isNeutralScore: isNeutralScore,
                   domainWeights: domainWeights
                 } AS match
@@ -322,6 +371,9 @@ export class ProfileRepository {
           availabilityEnd: filters.availability?.end ?? null,
           technologyDomainWeights: TECHNOLOGY_DOMAIN_WEIGHTS,
           maxDomainWeightBonus: MAX_DOMAIN_WEIGHT_BONUS,
+          minEvaluationScore: MIN_EVALUATION_SCORE,
+          maxEvaluationScore: MAX_EVALUATION_SCORE,
+          maxReputationWeight: MAX_REPUTATION_WEIGHT,
           weekdays: [...WEEKDAYS],
           neutralOnboardingScore: NEUTRAL_ONBOARDING_SCORE,
           offset: filters.offset,
