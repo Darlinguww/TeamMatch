@@ -5,6 +5,7 @@ import { initGeminiClient } from './services/gemini.service.js';
 import { initAzureOpenAIClient } from './services/llm/azure-openai.client.js';
 import aiRoutes from './routes/ai.routes.js';
 import matchmakingRoutes from './routes/matchmaking.routes.js';
+import { DocumentoDemasiadoGrandeError } from './services/llm/document-size.validator.js';
 
 // M2 — Gemini (habilidades)
 getRequiredEnv('GEMINI_API_KEY');
@@ -34,6 +35,11 @@ app.use('/api/matchmaking', matchmakingRoutes);
 
 // Middleware centralizado de errores
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof DocumentoDemasiadoGrandeError) {
+    res.status(err.statusCode).json({ error: err.message });
+    return;
+  }
+
   console.error('[ai-service]', err.message);
   res.status(500).json({ error: err.message || 'Error interno del servicio de IA.' });
 });
