@@ -45,19 +45,52 @@ Reglas de negocio:
 6. El teamScore es el promedio ponderado de los affinityScore de sus miembros.
 `;
 
+/**
+ * Construye el User Prompt integrando datos del grafo Neo4j + instrucciones del usuario.
+ *
+ * Concatena limpiamente:
+ * 1. Datos estructurados del proyecto (desde Neo4j)
+ * 2. Perfiles estructurados de candidatos (desde Neo4j)
+ * 3. Instrucciones complementarias del usuario (texto libre desde UI)
+ *
+ * @param project - Requerimientos del proyecto desde grafo Neo4j
+ * @param candidates - Perfiles de candidatos desde grafo Neo4j
+ * @param userInstructions - Instrucciones complementarias del usuario (ej: "priorizar senior")
+ */
 export function buildUserPrompt(
   project: ProjectRequirements,
   candidates: CandidateProfile[],
+  userInstructions?: string,
 ): string {
-  return `
-## Proyecto a cubrir
+  // Sección 1: Datos estructurados del proyecto (grafo Neo4j)
+  let prompt = `
+## 📊 Proyecto a cubrir (datos estructurados del grafo Neo4j)
 
 ${JSON.stringify(project, null, 2)}
 
-## Candidatos disponibles (${candidates.length} perfiles)
+## 👥 Candidatos disponibles (${candidates.length} perfiles del grafo Neo4j)
 
-${JSON.stringify(candidates, null, 2)}
+${JSON.stringify(candidates, null, 2)}`;
 
-Genera las propuestas de equipo óptimas para este proyecto.
+  // Sección 2: Instrucciones complementarias del usuario (si existen)
+  if (userInstructions?.trim()) {
+    prompt += `
+
+## 📝 Instrucciones complementarias del usuario
+
+${userInstructions}`;
+  }
+
+  // Sección 3: Instrucción de ejecución
+  prompt += `
+
+## 🎯 Tarea
+
+Genera las propuestas de equipo óptimas para este proyecto, considerando tanto los datos estructurados
+del grafo como las instrucciones complementarias del usuario.
+Responde ÚNICAMENTE con JSON válido.
 `;
+
+  return prompt;
 }
+
