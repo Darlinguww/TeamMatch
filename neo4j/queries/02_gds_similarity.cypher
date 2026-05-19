@@ -3,8 +3,7 @@
 // Desarrollado para calcular la afinidad entre Candidatos y Proyectos.
 // =======================================================================
 
-// TAREA A: Crear la proyección del grafo en memoria si no existe
-// (Esto se ejecuta una vez en Neo4j para que la librería GDS pueda procesar los datos)
+// TAREA A: Crear la proyección del grafo en memoria
 CALL gds.graph.project(
   'matchmaking-pipeline',
   {
@@ -17,22 +16,29 @@ CALL gds.graph.project(
     REQUIERE: { type: 'REQUIERE', orientation: 'NATURAL' }
   }
 )
-YIELD graphName, nodeCount, relationshipCount;
+YIELD graphName, nodeCount, relationshipCount
+RETURN graphName, nodeCount, relationshipCount;
 
 
-// TAREA B: Consulta parametrizada de Similitud de Jaccard
-// (Mide la coincidencia exacta de los conjuntos de habilidades)
+// TAREA B: Similitud Jaccard nativa (Cypher)
+// Mide coincidencia exacta de habilidades: interseccion / union
 MATCH (p:Proyecto {proyectoId: $proyectoId})-[:REQUIERE]->(hReq:Habilidad)
-WITH p, collect(id(hReq)) AS proyectoSkills
+WITH p, collect(DISTINCT id(hReq)) AS proyectoSkillIds
 
 MATCH (u:Usuario)-[:TIENE_HABILIDAD]->(hUser:Habilidad)
-WITH p, proyectoSkills, u, collect(id(hUser)) AS usuarioSkills
+WITH p, proyectoSkillIds, u, collect(DISTINCT id(hUser)) AS usuarioSkillIds
 
 WITH u, p,
-     [x IN proyectoSkills WHERE x IN usuarioSkills] AS interseccion,
-     gds.util.vector.similarity.jaccard(proyectoSkills, usuarioSkills) AS scoreJaccard
+     [x IN proyectoSkillIds WHERE x IN usuarioSkillIds] AS interseccion,
+     [x IN proyectoSkillIds WHERE NOT x IN usuarioSkillIds] + [x IN usuarioSkillIds WHERE NOT x IN proyectoSkillIds] AS diferencia
 
-WHERE scoreJaccard > 0.1 // Umbral para filtrar perfiles irrelevantes
+WITH u, p, interseccion, diferencia,
+     CASE 
+       WHEN (size(interseccion) + size(diferencia)) = 0 THEN 0.0
+       ELSE ROUND(toFloat(size(interseccion)) / (size(interseccion) + size(diferencia)), 3)
+     END AS scoreJaccard
+
+WHERE scoreJaccard > 0.1
 
 RETURN u.nombre AS candidato, 
        u.email AS correo, 
@@ -42,20 +48,46 @@ ORDER BY score_compatibilidad DESC
 LIMIT 10;
 
 
-// TAREA C: Consulta parametrizada de Similitud de Coseno
-// (Pondera el nivel del usuario vs la prioridad requerida por el proyecto)
+// TAREA C: Similitud ponderada nativa (Cypher)
+// Suma ponderada de coincidencias por nivel/prioridad
 MATCH (p:Proyecto {proyectoId: $proyectoId})-[r:REQUIERE]->(h:Habilidad)
-WITH p, h, case r.prioridad when 'alta' then 3.0 when 'media' then 2.0 else 1.0 end AS pesoReq
-ORDER BY id(h)
-WITH p, collect(pesoReq) AS vectorProyecto, collect(id(h)) AS habilidadesIds
+WITH p, h, 
+     CASE r.prioridad 
+       WHEN 'alta' THEN 3.0 
+       WHEN 'media' THEN 2.0 
+       ELSE 1.0 
+     END AS pesoRequisito
+WITH p, collect({skill_id: id(h), peso: pesoRequisito}) AS requisitos,
+     sum(CASE r.prioridad WHEN 'alta' THEN 3.0 WHEN 'media' THEN 2.0 ELSE 1.0 END) AS pesoTotal
 
 MATCH (u:Usuario)
-OPTIONAL MATCH (u)-[t:TIENE_HABILIDAD]->(hUser:Habilidad) WHERE id(hUser) IN habilidadesIds
-WITH u, vectorProyecto, habilidadesIds,
-     collect(case t.nivel when 'Avanzado' then 3.0 when 'Intermedio' then 2.0 when 'Básico' then 1.0 else 0.0 end) AS vectorUsuario
+OPTIONAL MATCH (u)-[t:TIENE_HABILIDAD]->(hUser:Habilidad)
+WITH u, requisitos, pesoTotal,
+     collect(DISTINCT {
+       skill_id: id(hUser),
+       nivel: CASE t.nivel 
+              WHEN 'Avanzado' THEN 3.0 
+              WHEN 'Intermedio' THEN 2.0 
+              WHEN 'Básico' THEN 1.0 
+              ELSE 0.0 
+            END
+     }) AS usuarioSkills
 
-WITH u, gds.util.vector.similarity.cosine(vectorProyecto, vectorUsuario) AS scoreCoseno
-WHERE scoreCoseno > 0.0
+WITH u, requisitos, pesoTotal, usuarioSkills,
+     CASE 
+       WHEN pesoTotal = 0 THEN 0.0
+       ELSE ROUND(
+         sum([
+           req IN requisitos 
+           WHERE ANY(us IN usuarioSkills WHERE us.skill_id = req.skill_id)
+           | req.peso * (us.nivel / 3.0)
+         ]) / pesoTotal,
+         3
+       )
+     END AS scorePonderado
 
-RETURN u.nombre AS candidato, scoreCoseno AS score_afin_ajustado
+WHERE scorePonderado > 0.0
+
+RETURN u.nombre AS candidato, 
+       scorePonderado AS score_afin_ajustado
 ORDER BY score_afin_ajustado DESC;

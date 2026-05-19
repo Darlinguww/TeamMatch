@@ -20,28 +20,34 @@ services:
       - '7687:7687'   # Bolt protocol (driver)
     environment:
       - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
-      # GDS y APOC: habilitación de procedimientos
-      - NEO4J_PLUGINS=["graph-data-science", "apoc"]
+      - NEO4J_USER=${NEO4J_USER}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      # Plugins: formato JSON aceptado por neo4j-admin / docker entrypoint
+      - 'NEO4J_PLUGINS=["graph-data-science","apoc"]'
       - NEO4J_dbms_security_procedures_unrestricted=gds.*,apoc.*
       - NEO4J_dbms_security_procedures_allowlist=gds.*,apoc.*
-      # Optimización de memoria para proyecciones de grafos (GDS)
-      - NEO4J_dbms_memory_heap_initial__size=768m
-      - NEO4J_dbms_memory_heap_max__size=1536m
-      - NEO4J_dbms_memory_pagecache_size=768m
+      # Memoria (host ~4GB dev): heap ~2GB + pagecache 512m para ~1k nodos / ~50k rels
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=1536m
+      - NEO4J_server_memory_pagecache_size=512m
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
-      - ./neo4j/plugins:/plugins
+      - neo4j_plugins:/plugins
       - ./neo4j/init:/docker-entrypoint-initdb.d
     networks:
       - teammatch-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "${NEO4J_USER}", "-p", "${NEO4J_PASSWORD}", "RETURN 1"]
-      interval: 20s
-      timeout: 15s
-      retries: 10
-      start_period: 500s
+      test:
+        [
+          'CMD-SHELL',
+          'cypher-shell -u "$$NEO4J_USER" -p "$$NEO4J_PASSWORD" "RETURN 1" AS ok',
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 120s
  
   # ─────────────────────────────────────────────
   # FRONTEND — React + Vite + TypeScript
@@ -118,3 +124,4 @@ services:
     networks:
       - teammatch-net
     restart: unless-stopped
+

@@ -1,4 +1,4 @@
-import { driver } from '../../../database/neo4j.js';
+import { driver } from "../../../database/neo4j.js";
 import {
   CreateProjectInput,
   ProjectDetails,
@@ -8,13 +8,13 @@ import {
   ProjectPhaseTwoCandidate,
   ProjectRoleInput,
   SemanticIndexRebuildResult,
-  ProjectSummary
-} from '../types/project.types.js';
-import { ProjectRepository as ProjectRepositoryContract } from '../project.service.js';
+  ProjectSummary,
+} from "../types/project.types.js";
+import { ProjectRepository as ProjectRepositoryContract } from "../project.service.js";
 
 const DEFAULT_SKILL_LEVEL = 1;
 const MAX_SKILL_LEVEL = 5;
-const GDS_SKILLS_GRAPH = 'teamMatchSkillsSimilarity';
+const GDS_SKILLS_GRAPH = "teamMatchSkillsSimilarity";
 
 export class Neo4jProjectRepository implements ProjectRepositoryContract {
   public async findMissingSkillNames(skillNames: string[]): Promise<string[]> {
@@ -22,20 +22,28 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
 
     try {
       const result = await session.run(
-        'MATCH (s:Habilidad) WHERE s.name IN $names RETURN collect(s.name) AS names',
-        { names: skillNames }
+        "MATCH (s:Habilidad) WHERE s.name IN $names RETURN collect(s.name) AS names",
+        { names: skillNames },
       );
-      const found = new Set((result.records[0]?.get('names') as string[] | undefined) ?? []);
+      const found = new Set(
+        (result.records[0]?.get("names") as string[] | undefined) ?? [],
+      );
       return skillNames.filter((name) => !found.has(name));
     } finally {
       await session.close();
     }
   }
 
-  public async createProject(leaderId: string, projectId: string, input: CreateProjectInput): Promise<void> {
+  public async createProject(
+    leaderId: string,
+    projectId: string,
+    input: CreateProjectInput,
+  ): Promise<void> {
     const session = driver.session();
     const createdAt = new Date().toISOString();
-    const summary = input.description.slice(0, 160) + (input.description.length > 160 ? '...' : '');
+    const summary =
+      input.description.slice(0, 160) +
+      (input.description.length > 160 ? "..." : "");
 
     try {
       await session.run(
@@ -64,8 +72,8 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
           description: input.description,
           summary,
           createdAt,
-          roles: input.roles
-        }
+          roles: input.roles,
+        },
       );
     } finally {
       await session.close();
@@ -91,7 +99,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 leader.email AS leaderEmail,
                 roles
          ORDER BY p.createdAt DESC`,
-        { userId }
+        { userId },
       );
 
       return result.records.map((record) => this.mapProjectSummary(record));
@@ -100,7 +108,10 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     }
   }
 
-  public async findProjectForUser(userId: string, projectId: string): Promise<ProjectDetails | null> {
+  public async findProjectForUser(
+    userId: string,
+    projectId: string,
+  ): Promise<ProjectDetails | null> {
     const session = driver.session();
 
     try {
@@ -120,7 +131,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 leader.email AS leaderEmail,
                 roles
          LIMIT 1`,
-        { userId, projectId }
+        { userId, projectId },
       );
 
       if (!result.records[0]) {
@@ -129,14 +140,17 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
 
       return {
         ...this.mapProjectSummary(result.records[0]),
-        description: String(result.records[0].get('description') ?? '')
+        description: String(result.records[0].get("description") ?? ""),
       };
     } finally {
       await session.close();
     }
   }
 
-  public async findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[] | null> {
+  public async findPhaseOneCandidates(
+    userId: string,
+    projectId: string,
+  ): Promise<ProjectPhaseOneCandidate[] | null> {
     const session = driver.session();
 
     try {
@@ -149,14 +163,16 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 leader.userId AS leaderId,
                 [name IN requiredSkillNames WHERE name IS NOT NULL] AS requiredSkillNames
          LIMIT 1`,
-        { userId, projectId }
+        { userId, projectId },
       );
 
       if (!metaResult.records[0]) {
         return null;
       }
 
-      const requiredSkillNames = metaResult.records[0].get('requiredSkillNames') as string[];
+      const requiredSkillNames = metaResult.records[0].get(
+        "requiredSkillNames",
+      ) as string[];
       if (requiredSkillNames.length === 0) {
         return [];
       }
@@ -171,13 +187,13 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
          ORDER BY size(matchedSkills) DESC, toLower(candidate.user), candidate.userId`,
         {
           requiredSkillNames,
-          leaderId: metaResult.records[0].get('leaderId') as string | null
-        }
+          leaderId: metaResult.records[0].get("leaderId") as string | null,
+        },
       );
 
       return result.records.map((record) => ({
-        userId: String(record.get('userId')),
-        matchedSkills: record.get('matchedSkills') as string[]
+        userId: String(record.get("userId")),
+        matchedSkills: record.get("matchedSkills") as string[],
       }));
     } finally {
       await session.close();
@@ -187,7 +203,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
   public async findPhaseTwoCandidates(
     userId: string,
     projectId: string,
-    weights: ProjectMatchWeights
+    weights: ProjectMatchWeights,
   ): Promise<ProjectPhaseTwoCandidate[] | null> {
     const session = driver.session();
 
@@ -199,14 +215,16 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
          RETURN project.projectId AS projectId,
                 [skill IN requiredSkills WHERE skill IS NOT NULL] AS requiredSkills
          LIMIT 1`,
-        { userId, projectId }
+        { userId, projectId },
       );
 
       if (!accessResult.records[0]) {
         return null;
       }
 
-      const requiredSkills = accessResult.records[0].get('requiredSkills') as unknown[];
+      const requiredSkills = accessResult.records[0].get(
+        "requiredSkills",
+      ) as unknown[];
       if (requiredSkills.length === 0) {
         return [];
       }
@@ -302,19 +320,19 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
           similarWeight: weights.similar,
           complementaryWeight: weights.complementary,
           defaultSkillLevel: DEFAULT_SKILL_LEVEL,
-          maxSkillLevel: MAX_SKILL_LEVEL
-        }
+          maxSkillLevel: MAX_SKILL_LEVEL,
+        },
       );
 
       return result.records.map((record) => ({
-        userId: String(record.get('userId')),
-        email: record.get('email') ? String(record.get('email')) : null,
-        name: record.get('name') ? String(record.get('name')) : null,
-        score: this.toNumber(record.get('score')),
-        exactMatches: this.toNumber(record.get('exactMatches')),
-        similarMatches: this.toNumber(record.get('similarMatches')),
-        complementaryMatches: this.toNumber(record.get('complementaryMatches')),
-        skills: this.mapSkillContributions(record.get('skills'))
+        userId: String(record.get("userId")),
+        email: record.get("email") ? String(record.get("email")) : null,
+        name: record.get("name") ? String(record.get("name")) : null,
+        score: this.toNumber(record.get("score")),
+        exactMatches: this.toNumber(record.get("exactMatches")),
+        similarMatches: this.toNumber(record.get("similarMatches")),
+        complementaryMatches: this.toNumber(record.get("complementaryMatches")),
+        skills: this.mapSkillContributions(record.get("skills")),
       }));
     } finally {
       await session.close();
@@ -328,35 +346,47 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     const session = driver.session();
 
     try {
-      await session.run('CALL gds.version() YIELD version RETURN version');
+      // Verificar disponibilidad de GDS
+      await session.run("CALL gds.version() YIELD version RETURN version");
 
+      // Verificar si la proyección ya existe y eliminarla si es necesario
       const graphExistsResult = await session.run(
-        'CALL gds.graph.exists($graphName) YIELD exists RETURN exists',
-        { graphName: GDS_SKILLS_GRAPH }
+        "CALL gds.graph.exists($graphName) YIELD exists RETURN exists",
+        { graphName: GDS_SKILLS_GRAPH },
       );
 
-      if (Boolean(graphExistsResult.records[0]?.get('exists'))) {
-        await session.run('CALL gds.graph.drop($graphName) YIELD graphName RETURN graphName', {
-          graphName: GDS_SKILLS_GRAPH
-        });
+      if (Boolean(graphExistsResult.records[0]?.get("exists"))) {
+        await session.run(
+          "CALL gds.graph.drop($graphName) YIELD graphName RETURN graphName",
+          { graphName: GDS_SKILLS_GRAPH },
+        );
       }
 
+      // Crear proyección del grafo: Habilidad, Usuario, Rol con relaciones TIENE_HABILIDAD y REQUIERE
       const projectionResult = await session.run(
         `CALL gds.graph.project(
            $graphName,
-           ['Habilidad', 'Usuario', 'Rol'],
            {
-             TIENE_HABILIDAD: {orientation: 'UNDIRECTED'},
-             REQUIERE: {orientation: 'UNDIRECTED'}
+             Habilidad: { properties: ['nombre', 'normalizedName'] },
+             Usuario: { properties: ['userId', 'name'] },
+             Rol: { properties: ['roleId', 'name'] }
+           },
+           {
+             TIENE_HABILIDAD: { type: 'TIENE_HABILIDAD', orientation: 'UNDIRECTED' },
+             REQUIERE: { type: 'REQUIERE', orientation: 'UNDIRECTED' }
            }
          )
          YIELD graphName, nodeCount, relationshipCount
          RETURN graphName, nodeCount, relationshipCount`,
-        { graphName: GDS_SKILLS_GRAPH }
+        { graphName: GDS_SKILLS_GRAPH },
       );
 
-      await session.run('MATCH (:Habilidad)-[relation:SIMILAR_A]->(:Habilidad) DELETE relation');
+      // Limpiar relaciones SIMILAR_A previas
+      await session.run(
+        "MATCH (h1:Habilidad)-[relation:SIMILAR_A]->(h2:Habilidad) DELETE relation",
+      );
 
+      // Ejecutar Node Similarity y crear relaciones SIMILAR_A parametrizadas
       const similarityResult = await session.run(
         `CALL gds.nodeSimilarity.stream($graphName, {
            topK: $topK,
@@ -369,53 +399,65 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
          WHERE source:Habilidad
            AND target:Habilidad
            AND coalesce(source.normalizedName, toLower(source.name)) <> coalesce(target.normalizedName, toLower(target.name))
+           AND similarity > 0
          MERGE (source)-[relation:SIMILAR_A]->(target)
          SET relation.score = similarity,
-             relation.source = 'gds.nodeSimilarity',
+             relation.source = $source,
              relation.updatedAt = datetime()
          RETURN count(relation) AS relationshipsCreated`,
         {
           graphName: GDS_SKILLS_GRAPH,
           topK: input.topK,
-          similarityCutoff: input.similarityCutoff
-        }
+          similarityCutoff: input.similarityCutoff,
+          source: "gds.nodeSimilarity",
+        },
       );
 
       const projection = projectionResult.records[0];
       return {
-        graphName: String(projection.get('graphName')),
-        nodeCount: this.toNumber(projection.get('nodeCount')),
-        relationshipCount: this.toNumber(projection.get('relationshipCount')),
-        relationshipsCreated: this.toNumber(similarityResult.records[0]?.get('relationshipsCreated')),
+        graphName: String(projection.get("graphName")),
+        nodeCount: this.toNumber(projection.get("nodeCount")),
+        relationshipCount: this.toNumber(projection.get("relationshipCount")),
+        relationshipsCreated: this.toNumber(
+          similarityResult.records[0]?.get("relationshipsCreated"),
+        ),
         similarityCutoff: input.similarityCutoff,
-        topK: input.topK
+        topK: input.topK,
       };
     } finally {
       await session.close();
     }
   }
 
-  private mapProjectSummary(record: { get(key: string): unknown }): ProjectSummary {
+  private mapProjectSummary(record: {
+    get(key: string): unknown;
+  }): ProjectSummary {
     return {
-      id: String(record.get('projectId')),
-      title: String(record.get('title')),
-      summary: String(record.get('summary') ?? ''),
-      createdAt: String(record.get('createdAt')),
+      id: String(record.get("projectId")),
+      title: String(record.get("title")),
+      summary: String(record.get("summary") ?? ""),
+      createdAt: String(record.get("createdAt")),
       leader: {
-        userId: record.get('leaderId') ? String(record.get('leaderId')) : null,
-        email: record.get('leaderEmail') ? String(record.get('leaderEmail')) : null
+        userId: record.get("leaderId") ? String(record.get("leaderId")) : null,
+        email: record.get("leaderEmail")
+          ? String(record.get("leaderEmail"))
+          : null,
       },
-      roles: this.mapRoles(record.get('roles'))
+      roles: this.mapRoles(record.get("roles")),
     };
   }
 
   private mapRoles(value: unknown): ProjectRoleInput[] {
     return Array.isArray(value)
-      ? value.filter((role): role is ProjectRoleInput => Boolean(role && typeof role === 'object' && 'role' in role))
+      ? value.filter((role): role is ProjectRoleInput =>
+          Boolean(role && typeof role === "object" && "role" in role),
+        )
       : [];
   }
 
-  private mapSkillContributions(value: unknown): ProjectMatchSkillContribution[] {
+  private mapSkillContributions(
+    value: unknown,
+  ): ProjectMatchSkillContribution[] {
     if (!Array.isArray(value)) {
       return [];
     }
@@ -427,16 +469,19 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
       return {
         requiredSkill: String(item.requiredSkill),
         matchedSkill: String(item.matchedSkill),
-        matchType: rawMatchType === 'similar' || rawMatchType === 'complementary' ? rawMatchType : 'exact',
+        matchType:
+          rawMatchType === "similar" || rawMatchType === "complementary"
+            ? rawMatchType
+            : "exact",
         semanticScore: this.toNumber(item.semanticScore),
         level: this.toNumber(item.level),
-        score: this.toNumber(item.score)
+        score: this.toNumber(item.score),
       };
     });
   }
 
   private toNumber(value: unknown): number {
-    const numericValue = typeof value === 'number' ? value : Number(value);
+    const numericValue = typeof value === "number" ? value : Number(value);
     return Number.isFinite(numericValue) ? numericValue : 0;
   }
 }
