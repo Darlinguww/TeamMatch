@@ -20,10 +20,14 @@ services:
       - '7687:7687'   # Bolt protocol (driver)
     environment:
       - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
-      - NEO4J_dbms_security_procedures_unrestricted=gds.*
-      - NEO4J_dbms_memory_heap_initial__size=512m
-      - NEO4J_dbms_memory_heap_max__size=1G
-      - NEO4J_dbms_memory_pagecache_size=512m
+      # GDS y APOC: habilitación de procedimientos
+      - NEO4J_PLUGINS=["graph-data-science", "apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=gds.*,apoc.*
+      - NEO4J_dbms_security_procedures_allowlist=gds.*,apoc.*
+      # Optimización de memoria para proyecciones de grafos (GDS)
+      - NEO4J_dbms_memory_heap_initial__size=768m
+      - NEO4J_dbms_memory_heap_max__size=1536m
+      - NEO4J_dbms_memory_pagecache_size=768m
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
