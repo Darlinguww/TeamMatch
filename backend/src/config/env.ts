@@ -62,11 +62,11 @@ export const env = {
   jwtExpiresIn: readStringEnv('JWT_EXPIRES_IN', '24h'),
   maxLoginAttempts: readNumberEnv('MAX_LOGIN_ATTEMPTS', 4),
   loginBlockDurationMs: readNumberEnv('LOGIN_BLOCK_DURATION_MS', 900000),
-  geminiApiKey: process.env.GEMINI_API_KEY?.trim() || '',
-  geminiModel: readStringEnv('GEMINI_MODEL', 'gemini-1.5-flash'),
+  aiServiceUrl: readStringEnv('AI_SERVICE_URL', 'http://localhost:3001'),
   gdsRebuildSecret: process.env.GDS_REBUILD_SECRET?.trim() || '',
   processingTimeoutMs: readNumberEnv('PROCESSING_TIMEOUT_MS', 30000),
   corsOrigins,
+  authRegisterEmailWhitelist: readStringListEnv('AUTH_REGISTER_EMAIL_WHITELIST'),
   neo4j: {
     uri: readStringEnv('NEO4J_URI', 'bolt://neo4j:7687'),
     user: readStringEnv('NEO4J_USER', 'neo4j'),

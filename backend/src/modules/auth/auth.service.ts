@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
+import { env } from '../../config/env.js';
 import { UnauthorizedError, ConflictError, ForbiddenError } from '../../shared/errors/HttpErrors.js';
 import { signAccessToken } from '../../shared/utils/jwt.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -23,6 +24,8 @@ export class AuthService {
   ) {}
 
   public async register(input: RegisterDto): Promise<RegisterResponse> {
+    this.ensureEmailAllowed(input.email);
+
     const existingUser = await this.userRepository.findByEmail(input.email);
 
     if (existingUser) {
@@ -78,6 +81,27 @@ export class AuthService {
     return {
       token: signAccessToken({ sub: user.userId, email: user.email })
     };
+  }
+
+  private ensureEmailAllowed(email: string): void {
+    const whitelist = env.authRegisterEmailWhitelist;
+    if (whitelist.length === 0) {
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const allowed = whitelist.some((entry) => {
+      const pattern = entry.trim().toLowerCase();
+      if (pattern.startsWith('@')) {
+        return normalizedEmail.endsWith(pattern);
+      }
+
+      return normalizedEmail === pattern;
+    });
+
+    if (!allowed) {
+      throw new ForbiddenError('Email domain is not allowed for registration');
+    }
   }
 
   private async normalizeExpiredLock(user: UserEntity): Promise<UserEntity> {

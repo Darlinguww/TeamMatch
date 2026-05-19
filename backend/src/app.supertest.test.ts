@@ -19,7 +19,7 @@ describe('API HTTP con Supertest', () => {
     });
   });
 
-  it('devuelve fallback manual vacio cuando Gemini no esta disponible', async () => {
+  it('devuelve fallback manual vacio cuando el servicio de IA no esta disponible', async () => {
     const response = await request(app)
       .post('/api/availability/parse')
       .send({ text: 'viernes de 8 a 10' })
@@ -112,6 +112,16 @@ describe('API HTTP con Supertest', () => {
   it('protege el scoring de Fase 2 detras de autenticacion', async () => {
     const response = await request(app)
       .get('/projects/project-1/match/phase2')
+      .expect(401);
+
+    expect(response.body.error).toMatchObject({
+      code: 'UNAUTHORIZED'
+    });
+  });
+
+  it('protege el endpoint legacy /match/:id/score detras de autenticacion', async () => {
+    const response = await request(app)
+      .get('/match/user-1/score')
       .expect(401);
 
     expect(response.body.error).toMatchObject({

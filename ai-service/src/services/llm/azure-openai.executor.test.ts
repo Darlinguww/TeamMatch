@@ -35,7 +35,9 @@ describe('executeWithAzureOpenAIFallback', () => {
       },
     });
 
-    expect(result).toEqual(createEmptyMatchmakingResult('proyecto-2'));
+    // `generatedAt` sale de `new Date()` en el fallback: no comparar igualdad estricta entre dos instantes.
+    expect(result).toMatchObject({ projectId: 'proyecto-2', proposals: [] });
+    expect(result.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     expect(console.error).toHaveBeenCalled();
   });
 

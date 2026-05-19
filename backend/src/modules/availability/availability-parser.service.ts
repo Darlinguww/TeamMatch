@@ -2,15 +2,15 @@ import { AvailabilityParseResult, AvailabilityParser } from './types/availabilit
 
 export class AvailabilityParserService {
   public constructor(
-    private readonly geminiParser: AvailabilityParser,
+    private readonly aiParser: AvailabilityParser,
     private readonly manualParser: AvailabilityParser
   ) {}
 
   public async parse(text: string): Promise<AvailabilityParseResult> {
     try {
       return {
-        availability: await this.geminiParser.parse(text),
-        source: 'gemini'
+        availability: await this.aiParser.parse(text),
+        source: 'azure'
       };
     } catch {
       await this.tryManualParseForValidation(text);

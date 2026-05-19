@@ -93,7 +93,7 @@ services:
     restart: unless-stopped
  
   # ─────────────────────────────────────────────
-  # AI SERVICE — Microservicio Gemini (normalización + explicaciones)
+  # AI SERVICE — Azure OpenAI gpt-4.1-mini (extracción + matchmaking)
   # ─────────────────────────────────────────────
   ai-service:
     build:
@@ -104,8 +104,10 @@ services:
       - '3001:3001'
     environment:
       - PORT=3001
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
       - PROCESSING_TIMEOUT_MS=${PROCESSING_TIMEOUT_MS}
       - NODE_ENV=${NODE_ENV}

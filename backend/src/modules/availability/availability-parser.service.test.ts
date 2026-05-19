@@ -3,13 +3,13 @@ import { AvailabilityParserService } from './availability-parser.service.js';
 import { ManualAvailabilityParser } from './manual-availability.parser.js';
 import { AvailabilityParser } from './types/availability-parser.types.js';
 
-class FailingGeminiParser implements AvailabilityParser {
+class FailingAiParser implements AvailabilityParser {
   public async parse() {
-    throw new Error('Gemini unavailable');
+    throw new Error('Azure AI unavailable');
   }
 }
 
-class SuccessfulGeminiParser implements AvailabilityParser {
+class SuccessfulAiParser implements AvailabilityParser {
   public async parse() {
     return [{
       day: 'friday' as const,
@@ -46,11 +46,11 @@ describe('Availability parsing', () => {
     ]);
   });
 
-  it('usa Gemini cuando esta disponible', async () => {
-    const service = new AvailabilityParserService(new SuccessfulGeminiParser(), new ManualAvailabilityParser());
+  it('usa Azure cuando el parser de IA esta disponible', async () => {
+    const service = new AvailabilityParserService(new SuccessfulAiParser(), new ManualAvailabilityParser());
 
     await expect(service.parse('viernes de 8 a 10')).resolves.toEqual({
-      source: 'gemini',
+      source: 'azure',
       availability: [{
         day: 'friday',
         timeSlots: [{ start: '08:00', end: '10:00' }]
@@ -58,8 +58,8 @@ describe('Availability parsing', () => {
     });
   });
 
-  it('hace fallback manual vacio cuando Gemini falla', async () => {
-    const service = new AvailabilityParserService(new FailingGeminiParser(), new ManualAvailabilityParser());
+  it('hace fallback manual vacio cuando Azure falla', async () => {
+    const service = new AvailabilityParserService(new FailingAiParser(), new ManualAvailabilityParser());
 
     await expect(service.parse('viernes de 8 a 10')).resolves.toEqual({
       source: 'manual',

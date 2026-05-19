@@ -9,6 +9,9 @@
     "start": "npm run build && node dist/index.js",
     "dev": "tsx watch index.ts",
     "test": "vitest --run",
+    "test:integration": "vitest --run tests/integration",
+    "test:neo4j": "vitest --run tests/integration --config vitest.neo4j.config.ts",
+    "test:security": "vitest --run src/shared/security backend/tests/integration/security.routes.test.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -19,7 +22,8 @@
     "file-type": "^22.0.1",
     "jsonwebtoken": "^9.0.0",
     "multer": "^1.4.5-lts.1",
-    "neo4j-driver": "^5.15.0"
+    "neo4j-driver": "^5.15.0",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.2",

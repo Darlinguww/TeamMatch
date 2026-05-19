@@ -4,8 +4,26 @@ export interface SkillExperienceInput {
   level?: string;
 }
 
+export const SKILL_CATEGORIES = [
+  'frontend',
+  'backend',
+  'mobile',
+  'devops',
+  'data',
+  'design',
+  'humanities',
+  'social-work',
+  'management',
+  'marketing',
+  'qa',
+  'other'
+] as const;
+
+export type SkillCategory = typeof SKILL_CATEGORIES[number];
+
 export interface SkillExperience {
   skillName: string;
+  category: SkillCategory;
   yearsOfExperience: number;
   level: string | null;
 }
@@ -64,12 +82,37 @@ export interface SearchUsersFilters {
   offset: number;
 }
 
+export type ProfileSearchDomainWeights = Record<string, number>;
+
 export interface ProfileSearchMatch {
   matchingSkills: number;
   totalMatchingYears: number;
   availabilityMatched: boolean;
   redundancyPenalty: number;
   score: number;
+  matchingCategories: SkillCategory[];
+  categoryWeightApplied: number;
+  reputationScore: number;
+  reputationWeightApplied: number;
+  isNeutralScore: boolean;
+  domainWeights: ProfileSearchDomainWeights;
+}
+
+export interface ReputationBreakdown {
+  skillsCount: number;
+  skillsScore: number;
+  totalExperienceYears: number;
+  experienceScore: number;
+  availabilityDays: number;
+  availabilityScore: number;
+  experienceAlignmentScore: number;
+}
+
+export interface UserReputation {
+  userId: string;
+  user: string;
+  reputationScore: number;
+  breakdown: ReputationBreakdown;
 }
 
 export interface PublicProfileSearchResult extends PublicProfile {

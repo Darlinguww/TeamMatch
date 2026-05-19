@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { matchTeams, processSkills } from '../services/gemini.service.js';
+import { parseAvailabilityFromText } from '../services/availability/availability.azure.service.js';
+import { matchTeams, processSkills } from '../services/skill-normalization.azure.service.js';
 import type { Profile, ProjectRequirement } from '../types/ai.types.js';
 
 const router = Router();
@@ -40,6 +41,27 @@ function asyncHandler(
     void fn(req, res, next).catch(next);
   };
 }
+
+/**
+ * POST /api/ai/parse-availability
+ * Body: { text: string }
+ */
+router.post(
+  '/parse-availability',
+  asyncHandler(async (req, res) => {
+    const { text } = req.body as { text?: unknown };
+
+    if (!isNonEmptyString(text)) {
+      res.status(400).json({
+        error: 'El campo "text" es obligatorio y debe ser una cadena no vacía.',
+      });
+      return;
+    }
+
+    const availability = await parseAvailabilityFromText(text.trim());
+    res.json({ availability });
+  }),
+);
 
 /**
  * POST /api/ai/process-skills

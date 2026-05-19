@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { AvailabilityController } from './availability.controller.js';
 import { AvailabilityParserService } from './availability-parser.service.js';
-import { GeminiAvailabilityParser } from './gemini-availability.parser.js';
+import { env } from '../../config/env.js';
+import { AiServiceAvailabilityParser } from './ai-service-availability.parser.js';
 import { ManualAvailabilityParser } from './manual-availability.parser.js';
 
 const router = Router();
+const aiServiceUrl = env.aiServiceUrl;
 const availabilityParserService = new AvailabilityParserService(
-  new GeminiAvailabilityParser(),
+  new AiServiceAvailabilityParser(aiServiceUrl),
   new ManualAvailabilityParser()
 );
 const availabilityController = new AvailabilityController(availabilityParserService);
