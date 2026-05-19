@@ -21,7 +21,7 @@ export interface ProjectRequirements {
   requiredRoles: Array<{
     role: string;
     requiredSkills: string[];
-    priority: 'high' | 'medium' | 'low';
+    priority: "high" | "medium" | "low";
   }>;
   teamSize: number;
 }
@@ -53,4 +53,17 @@ export interface MatchmakingResult {
   projectId: string;
   proposals: TeamProposal[];
   generatedAt: string;
+}
+
+/**
+ * DTO de entrada para el endpoint de matchmaking.
+ * Integra datos estructurados del grafo Neo4j + instrucciones libres del usuario.
+ */
+export interface MatchmakingRequest {
+  /** Datos estructurados del proyecto desde Neo4j */
+  project: ProjectRequirements;
+  /** Perfiles de candidatos desde Neo4j */
+  candidates: CandidateProfile[];
+  /** Instrucciones complementarias del usuario (ej: "priorizar perfiles senior") */
+  userInstructions?: string;
 }
