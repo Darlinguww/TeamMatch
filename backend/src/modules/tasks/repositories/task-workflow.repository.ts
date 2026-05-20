@@ -40,7 +40,10 @@ export interface ReviewTaskWorkflowRepositoryResult extends ReviewTaskResult {
   actorIsLeader: boolean;
 }
 
-const IN_REVIEW_STATUS_KEY = 'in_review';
+/** Normalized status keys (must match TasksService.normalizeStatusKey). */
+const PENDING_STATUS_KEYS = ['pendiente', 'pending', ''];
+const IN_PROGRESS_STATUS_KEYS = ['en_progreso', 'in_progress'];
+const IN_REVIEW_STATUS_KEYS = ['en_revision', 'in_review'];
 
 export class TaskWorkflowRepository {
   public async updateStatus(input: UpdateTaskStatusInput): Promise<UpdateTaskStatusRepositoryResult | null> {
@@ -51,6 +54,7 @@ export class TaskWorkflowRepository {
         `MATCH (project:Proyecto)-[:TIENE_TAREA|CONTIENE]->(task:Tarea)
          WHERE task.taskId = $taskId OR task.tareaId = $taskId OR task.id = $taskId OR elementId(task) = $taskId
          MATCH (actor:Usuario {userId: $actorUserId})
+         OPTIONAL MATCH (assigneeById:Usuario {userId: $actorUserId})-[assignRel:ASIGNADO_A]->(task)
          OPTIONAL MATCH (actor)-[assignmentOut:ASIGNADO_A]->(task)
          OPTIONAL MATCH (task)-[assignmentIn:ASIGNADO_A]->(actor)
          OPTIONAL MATCH (actor)-[actorMembership:PERTENECE_A]->(project)
@@ -58,9 +62,18 @@ export class TaskWorkflowRepository {
               task,
               actor,
               actorMembership,
-              assignmentOut IS NOT NULL OR assignmentIn IS NOT NULL AS actorIsAssigned,
+              assignRel IS NOT NULL
+                OR assignmentOut IS NOT NULL
+                OR assignmentIn IS NOT NULL
+                OR toString(coalesce(task.assignedUserId, task.asignadoA, task.userAsigned, '')) = $actorUserId AS actorIsAssigned,
               coalesce(task.status, task.estado) AS previousStatus,
-              replace(toLower(trim(coalesce(task.status, task.estado, ''))), ' ', '_') AS previousStatusKey
+              replace(
+                replace(
+                  replace(toLower(trim(coalesce(task.status, task.estado, ''))), ' ', '_'),
+                  'ó', 'o'
+                ),
+                'í', 'i'
+              ) AS previousStatusKey
          CALL {
            WITH project
            OPTIONAL MATCH (leader:Usuario)-[leaderMembership:PERTENECE_A]->(project)
@@ -88,62 +101,69 @@ export class TaskWorkflowRepository {
               previousStatus,
               previousStatusKey,
               actorIsLeader OR (
-                actorIsMember
-                AND actorIsAssigned
+                actorIsAssigned
                 AND (
                   (
-                    previousStatusKey IN ['pendiente', 'pending', '']
-                    AND $normalizedStatus IN ['en_progreso', 'in_progress']
+                    previousStatusKey IN $pendingStatusKeys
+                    AND $normalizedStatus IN $inProgressStatusKeys
                   )
                   OR (
-                    previousStatusKey IN ['en_progreso', 'in_progress']
-                    AND $normalizedStatus = $inReviewStatusKey
+                    previousStatusKey IN $inProgressStatusKeys
+                    AND $normalizedStatus IN $inReviewStatusKeys
                   )
                 )
               ) AS actorCanUpdate,
               previousStatusKey <> $normalizedStatus AS statusChanged,
-              previousStatusKey <> $normalizedStatus AND $normalizedStatus = $inReviewStatusKey AS shouldNotifyLeader
+              previousStatusKey <> $normalizedStatus
+                AND $normalizedStatus IN $inReviewStatusKeys AS shouldNotifyLeader
          CALL {
            WITH task, actorCanUpdate
-           WITH task, actorCanUpdate
-           WHERE actorCanUpdate
-           SET task.status = $status,
-               task.estado = $status,
-               task.updatedAt = $occurredAt
-           RETURN count(task) AS tasksUpdated
+           FOREACH (_ IN CASE WHEN actorCanUpdate THEN [1] ELSE [] END |
+             SET task.status = $status,
+                 task.estado = $status,
+                 task.updatedAt = $occurredAt
+           )
+           RETURN CASE WHEN actorCanUpdate THEN 1 ELSE 0 END AS tasksUpdated
          }
          CALL {
            WITH task, actor, actorCanUpdate, statusChanged, previousStatus
-           WITH task, actor, actorCanUpdate, statusChanged, previousStatus
-           WHERE actorCanUpdate AND statusChanged
-           CREATE (event:EventoTarea {
-             eventId: $eventId,
-             type: 'STATUS_CHANGED',
-             previousStatus: previousStatus,
-             newStatus: $status,
-             createdAt: $occurredAt,
-             actorUserId: $actorUserId
-           })
-           CREATE (task)-[:TIENE_EVENTO]->(event)
-           CREATE (actor)-[:REALIZO]->(event)
-           RETURN count(event) AS statusEventsCreated
+           FOREACH (_ IN CASE WHEN actorCanUpdate AND statusChanged THEN [1] ELSE [] END |
+             CREATE (event:EventoTarea {
+               eventId: $eventId,
+               type: 'STATUS_CHANGED',
+               previousStatus: previousStatus,
+               newStatus: $status,
+               createdAt: $occurredAt,
+               actorUserId: $actorUserId
+             })
+             CREATE (task)-[:TIENE_EVENTO]->(event)
+             CREATE (actor)-[:REALIZO]->(event)
+           )
+           RETURN CASE WHEN actorCanUpdate AND statusChanged THEN 1 ELSE 0 END AS statusEventsCreated
          }
          CALL {
            WITH project, task, leader, actorCanUpdate, shouldNotifyLeader
-           WITH project, task, leader, actorCanUpdate, shouldNotifyLeader
-           WHERE actorCanUpdate AND shouldNotifyLeader AND leader IS NOT NULL
-           CREATE (notification:Notificacion {
-             notificationId: $notificationId,
-             type: 'TASK_IN_REVIEW',
-             message: 'Una tarea fue enviada a revision',
-             read: false,
-             taskId: coalesce(task.taskId, task.tareaId, task.id, elementId(task)),
-             projectId: coalesce(project.projectId, project.proyectoId),
-             createdAt: $occurredAt
-           })
-           CREATE (leader)-[:RECIBE]->(notification)
-           CREATE (notification)-[:SOBRE_TAREA]->(task)
-           RETURN count(notification) AS notificationsCreated
+           WITH project,
+                task,
+                leader,
+                actorCanUpdate,
+                shouldNotifyLeader,
+                actorCanUpdate AND shouldNotifyLeader AND leader IS NOT NULL AS notifyLeader
+           FOREACH (_ IN CASE WHEN notifyLeader THEN [1] ELSE [] END |
+             CREATE (notification:Notificacion {
+               notificationId: $notificationId,
+               type: 'TASK_IN_REVIEW',
+               message: 'Una tarea fue enviada a revision',
+               read: false,
+               actionable: false,
+               taskId: coalesce(task.taskId, task.tareaId, task.id, elementId(task)),
+               projectId: coalesce(project.projectId, project.proyectoId),
+               createdAt: $occurredAt
+             })
+             CREATE (leader)-[:RECIBE]->(notification)
+             CREATE (notification)-[:SOBRE_TAREA]->(task)
+           )
+           RETURN CASE WHEN notifyLeader THEN 1 ELSE 0 END AS notificationsCreated
          }
          RETURN coalesce(task.taskId, task.tareaId, task.id, elementId(task)) AS taskId,
                 coalesce(task.title, task.titulo, task.name, task.nombre, '') AS title,
@@ -169,7 +189,9 @@ export class TaskWorkflowRepository {
           actorUserId: input.actorUserId,
           status: input.status,
           normalizedStatus: input.normalizedStatus,
-          inReviewStatusKey: IN_REVIEW_STATUS_KEY,
+          pendingStatusKeys: PENDING_STATUS_KEYS,
+          inProgressStatusKeys: IN_PROGRESS_STATUS_KEYS,
+          inReviewStatusKeys: IN_REVIEW_STATUS_KEYS,
           eventId: input.eventId,
           notificationId: input.notificationId,
           occurredAt: input.occurredAt

@@ -23,6 +23,16 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
     }
   }, [open]);
 
+  useEffect(() => {
+    const onNotificationsChanged = () => {
+      if (open) {
+        void loadNotifications();
+      }
+    };
+    window.addEventListener('teammatch:notifications-changed', onNotificationsChanged);
+    return () => window.removeEventListener('teammatch:notifications-changed', onNotificationsChanged);
+  }, [open]);
+
   const loadNotifications = async () => {
     try {
       setLoading(true);

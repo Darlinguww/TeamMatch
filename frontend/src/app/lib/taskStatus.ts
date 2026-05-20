@@ -42,18 +42,7 @@ export function apiTaskStatusToUi(status: string): UiTaskStatus {
   return 'pending';
 }
 
-/** Etiqueta enviada a `PATCH /tasks/:id/status` (workflow). */
+/** Etiqueta enviada a `PATCH /tasks/:id/status` (workflow). Usar español canónico del backend. */
 export function uiTaskStatusToWorkflowPatch(status: UiTaskStatus): string {
-  switch (status) {
-    case 'pending':
-      return 'Pendiente';
-    case 'in-progress':
-      return 'In Progress';
-    case 'blocked':
-      return 'In Review';
-    case 'completed':
-      return 'Completada';
-    default:
-      return 'Pendiente';
-  }
+  return uiTaskStatusToApiCrud(status);
 }

@@ -27,6 +27,7 @@ describe.skipIf(!hasNeo4jIntegration())('ciclo de vida de tarea — Neo4j real',
   let graph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
   let httpGraph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
   let rejectGraph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
+  let spanishGraph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
 
   beforeAll(async () => {
     const reachable = await verifyNeo4jConnection();
@@ -39,6 +40,12 @@ describe.skipIf(!hasNeo4jIntegration())('ciclo de vida de tarea — Neo4j real',
       graph = await seedProjectTaskGraph(session, TEST_PREFIX);
       httpGraph = await seedProjectTaskGraph(session, `${TEST_PREFIX}-http`);
       rejectGraph = await seedProjectTaskGraph(session, `${TEST_PREFIX}-rej`);
+      spanishGraph = await seedProjectTaskGraph(session, `${TEST_PREFIX}-es`);
+      await session.run(
+        `MATCH (t:Tarea {taskId: $taskId})
+         SET t.status = 'en progreso', t.estado = 'en progreso'`,
+        { taskId: spanishGraph.taskId }
+      );
     } finally {
       await session.close();
     }
@@ -52,6 +59,18 @@ describe.skipIf(!hasNeo4jIntegration())('ciclo de vida de tarea — Neo4j real',
       await session.close();
       await driver.close();
     }
+  });
+
+  it('permite al miembro enviar la tarea a revision con estados en español', async () => {
+    const result = await service.updateStatus(spanishGraph.taskId, spanishGraph.memberId, {
+      status: 'en revision'
+    });
+
+    expect(result.task.status).toBe('en revision');
+    expect(result.notification).toMatchObject({
+      type: 'TASK_IN_REVIEW',
+      recipientUserId: spanishGraph.leaderId
+    });
   });
 
   it('permite al miembro enviar la tarea a revisión y notifica al líder', async () => {

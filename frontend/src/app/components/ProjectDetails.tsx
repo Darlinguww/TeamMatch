@@ -454,9 +454,12 @@ export function ProjectDetails() {
     });
   };
 
+  const isTaskAssignee = (task: Task) =>
+    Boolean(user?.id && task.assignedTo.trim() === user.id);
+
   const canDragTask = (task: Task) => {
     if (isProjectLeader) return true;
-    if (task.assignedTo !== user?.id) return false;
+    if (!isTaskAssignee(task)) return false;
     return task.status === 'pending' || task.status === 'in-progress';
   };
 
@@ -468,7 +471,7 @@ export function ProjectDetails() {
       }
       return true;
     }
-    if (task.assignedTo !== user?.id) return false;
+    if (!isTaskAssignee(task)) return false;
     if (task.status === 'pending' && targetStatus === 'in-progress') return true;
     if (task.status === 'in-progress' && targetStatus === 'blocked') return true;
     return false;
@@ -493,7 +496,7 @@ export function ProjectDetails() {
       if (!isProjectLeader) {
         const allowed =
           previous &&
-          previous.assignedTo === user?.id &&
+          isTaskAssignee(previous) &&
           ((previous.status === 'pending' && task.status === 'in-progress') ||
             (previous.status === 'in-progress' && task.status === 'blocked'));
         if (!allowed) {
@@ -545,6 +548,10 @@ export function ProjectDetails() {
         synced = synced.map((row) =>
           row.id === t.id ? { ...row, status: persistedStatus } : row
         );
+
+        if (persistedStatus === 'blocked') {
+          window.dispatchEvent(new CustomEvent('teammatch:notifications-changed'));
+        }
       }
 
       setProjectTasks(synced);

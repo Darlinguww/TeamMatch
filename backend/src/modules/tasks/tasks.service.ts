@@ -25,7 +25,9 @@ export class TasksService {
     }
 
     if (!statusUpdate.actorCanUpdate) {
-      throw new ForbiddenError('Only assigned users or project members can update task status');
+      throw new ForbiddenError(
+        'No tienes permiso para esta transición. El asignado puede mover Pendiente→En progreso y En progreso→En revisión; el líder aprueba o devuelve desde revisión.'
+      );
     }
 
     return {
