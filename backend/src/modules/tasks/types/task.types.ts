@@ -17,6 +17,7 @@ export interface UpdateTaskInput {
   description?: string;
   status?: TaskStatus;
   assignedUserId?: string | null;
+  sprint?: number | null;
 }
 
 export interface Task {

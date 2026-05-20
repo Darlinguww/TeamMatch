@@ -124,15 +124,33 @@ function CreateProjectModal({ open, onClose, onCreated }: {
   const addRole = (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    // Allow multiple roles with the same name but different descriptions
-    const newRole = {
-      id: `r_${Date.now()}`,
-      name: trimmed,
-      description: roleDesc.trim(),
-      headcount: Math.max(1, Math.min(20, roleHeadcount)),
-      skills: [],
-    };
-    set({ roles: [...form.roles, newRole] });
+    const headcount = Math.max(1, Math.min(20, roleHeadcount));
+    const normalized = trimmed.toLowerCase();
+    const existingIndex = form.roles.findIndex((r) => r.name.trim().toLowerCase() === normalized);
+
+    if (existingIndex >= 0) {
+      const updated = [...form.roles];
+      const existing = updated[existingIndex];
+      updated[existingIndex] = {
+        ...existing,
+        headcount: Math.min(20, (existing.headcount ?? 1) + headcount),
+        description: roleDesc.trim() || existing.description,
+      };
+      set({ roles: updated });
+    } else {
+      set({
+        roles: [
+          ...form.roles,
+          {
+            id: `r_${Date.now()}`,
+            name: trimmed,
+            description: roleDesc.trim(),
+            headcount,
+            skills: [],
+          },
+        ],
+      });
+    }
     setRoleInput(''); setRoleDesc(''); setRoleHeadcount(1);
   };
 
@@ -199,7 +217,8 @@ function CreateProjectModal({ open, onClose, onCreated }: {
         onCreated(localProject);
       } else {
         const created = await projectsApi.create(payload);
-        const projectData = await projectsApi.get(created.projectId);
+        const projectData =
+          created.project ?? (await projectsApi.get(created.projectId));
         onCreated(mapApiProjectToUi(projectData));
       }
 

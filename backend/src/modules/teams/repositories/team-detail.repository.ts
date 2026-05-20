@@ -31,7 +31,8 @@ export class TeamDetailRepository {
 
     try {
       const result = await session.run(
-        `MATCH (team:Proyecto {projectId: $teamId})
+        `MATCH (team:Proyecto)
+         WHERE team.projectId = $teamId OR team.proyectoId = $teamId
          CALL {
            WITH team
            OPTIONAL MATCH (member:Usuario)-[membership:PERTENECE_A]->(team)
@@ -65,7 +66,7 @@ export class TeamDetailRepository {
              END
            ) WHERE item IS NOT NULL] AS roles
          }
-         RETURN team.projectId AS id,
+         RETURN coalesce(team.projectId, team.proyectoId) AS id,
                 team.title AS title,
                 team.description AS description,
                 team.summary AS summary,
@@ -73,7 +74,7 @@ export class TeamDetailRepository {
                 members,
                 roles
          LIMIT 1`,
-        { teamId }
+        { teamId: teamId.trim() }
       );
 
       if (result.records.length === 0) {
@@ -100,7 +101,8 @@ export class TeamDetailRepository {
 
     try {
       const result = await session.run(
-        `MATCH (team:Proyecto {projectId: $teamId})
+        `MATCH (team:Proyecto)
+         WHERE team.projectId = $teamId OR team.proyectoId = $teamId
          OPTIONAL MATCH (member:Usuario {userId: $memberId})-[membership:PERTENECE_A]->(team)
          WITH team, member, membership
          CALL {
@@ -119,12 +121,12 @@ export class TeamDetailRepository {
          }
          WITH team, member, membership, activeTasks, membership IS NOT NULL AS membershipExists
          FOREACH (_ IN CASE WHEN membershipExists AND size(activeTasks) = 0 THEN [1] ELSE [] END | DELETE membership)
-         RETURN team.projectId AS teamId,
+         RETURN coalesce(team.projectId, team.proyectoId) AS teamId,
                 member.userId AS memberId,
                 membershipExists,
                 activeTasks
          LIMIT 1`,
-        { teamId, memberId, inactiveTaskStatuses: INACTIVE_TASK_STATUSES }
+        { teamId: teamId.trim(), memberId, inactiveTaskStatuses: INACTIVE_TASK_STATUSES }
       );
 
       if (result.records.length === 0) {

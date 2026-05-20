@@ -46,6 +46,7 @@ export interface Role {
   name: string;
   description: string;
   requiredSkills: string[];
+  headcount?: number;
 }
 
 export interface TeamMember {

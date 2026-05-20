@@ -33,7 +33,12 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next): void
   } else if (isJsonSyntaxError(error)) {
     normalizedError = new AppError('Malformed JSON body', 400, 'MALFORMED_JSON');
   } else {
-    normalizedError = new AppError('Internal server error', 500, 'INTERNAL_SERVER_ERROR');
+    const fallbackMessage = 'Internal server error';
+    const detail =
+      !isProduction && error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : fallbackMessage;
+    normalizedError = new AppError(detail, 500, 'INTERNAL_SERVER_ERROR');
   }
 
   if (normalizedError.statusCode >= 500) {

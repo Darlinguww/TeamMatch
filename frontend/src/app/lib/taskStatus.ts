@@ -35,6 +35,10 @@ export function apiTaskStatusToUi(status: string): UiTaskStatus {
   if (API_CRUD_TO_UI[key]) return API_CRUD_TO_UI[key];
   const normalized = key.replace(/_/g, ' ');
   if (API_CRUD_TO_UI[normalized]) return API_CRUD_TO_UI[normalized];
+  if (normalized.includes('complet')) return 'completed';
+  if (normalized.includes('revision') || normalized.includes('review')) return 'blocked';
+  if (normalized.includes('progreso') || normalized.includes('progress')) return 'in-progress';
+  if (normalized.includes('pendiente') || normalized.includes('pending')) return 'pending';
   return 'pending';
 }
 

@@ -18,15 +18,18 @@ import {
 import { mockProjects, mockUsers, mockTeamMembers, mockTasks, type Project, type Task, type TaskStatus } from '../lib/mockData';
 import { TeamProposals, type TeamProposal } from './TeamProposals';
 import { KanbanBoard } from './KanbanBoard';
+import { ApiError, getStoredToken } from '../lib/apiClient';
 import {
-  isApiModeEnabled,
+  isApiProjectRouteId,
   mapApiProjectToUi,
   mapApiTaskToUi,
   projectsApi,
+  shouldLoadProjectFromApi,
   tasksApi,
   teamsApi,
-  uiTaskStatusToApiCrud,
+  type ApiProjectKanbanState,
 } from '../lib/projectApi';
+import { apiTaskStatusToUi } from '../lib/taskStatus';
 import type { User } from '../lib/mockData';
 import {
   TeamManagementModal,
@@ -88,7 +91,7 @@ export function ProjectDetails() {
   const [leaderUser, setLeaderUser] = useState<User | null>(null);
   const [assigneeDirectory, setAssigneeDirectory] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const hydrateFromMock = (source: Project) => {
     setEditableProject(source);
@@ -114,36 +117,53 @@ export function ProjectDetails() {
   };
 
   useEffect(() => {
-    if (!id) return;
-    setLoadError(false);
-    const mock = mockProjects.find((p) => p.id === id);
+    const projectId = id?.trim();
+    if (!projectId) return;
+    setLoadError(null);
+    const mock = mockProjects.find((p) => p.id === projectId);
 
-    if (!isApiModeEnabled()) {
+    if (!shouldLoadProjectFromApi(projectId)) {
       if (mock) {
         hydrateFromMock(mock);
       } else {
         setEditableProject(null);
-        setLoadError(true);
+        setLoadError(
+          isApiProjectRouteId(projectId)
+            ? 'Inicia sesión para ver este proyecto.'
+            : 'Proyecto no encontrado.'
+        );
       }
       return;
     }
 
+    if (!getStoredToken()) {
+      setEditableProject(null);
+      setLoadError('Tu sesión ha expirado. Inicia sesión de nuevo para ver el proyecto.');
+      return;
+    }
+
     let cancelled = false;
-    (async () => {
+
+    const loadFromApi = async (attempt = 0): Promise<void> => {
       setIsLoading(true);
       try {
-        const [apiProject, apiTasks, team] = await Promise.all([
-          projectsApi.get(id),
-          projectsApi.listTasks(id),
-          teamsApi.getComposition(id).catch(() => null),
-        ]);
+        const apiProject = await projectsApi.get(projectId);
         if (cancelled) return;
+
+        const apiTasks = await projectsApi.listTasks(projectId);
+        const team = await teamsApi.getComposition(projectId).catch(() => null);
+        if (cancelled) return;
+
         const mapped = mapApiProjectToUi(apiProject);
         setEditableProject(mapped);
-        const tasks = apiTasks.map((t) => mapApiTaskToUi(t, id));
+        const tasks = apiTasks.map((t) => mapApiTaskToUi(t, projectId));
         setProjectTasks(tasks);
-        const maxSprint = tasks.reduce((max, t) => Math.max(max, t.sprint ?? 1), 1);
-        setCurrentSprint(maxSprint);
+        const maxSprintFromTasks = tasks.reduce((max, t) => Math.max(max, t.sprint ?? 1), 1);
+        const kanban = apiProject.kanban;
+        setSprintActive(kanban?.sprintActive ?? false);
+        setCurrentSprint(
+          Math.max(1, kanban?.currentSprint ?? 1, maxSprintFromTasks)
+        );
 
         const directory: Record<string, string> = {};
         if (user?.id) {
@@ -182,7 +202,7 @@ export function ProjectDetails() {
               .filter((m) => m.userId !== mapped.leaderId)
               .map((m) => ({
                 userId: m.userId,
-                projectId: id,
+                projectId,
                 role: 'Miembro',
                 joinedDate: m.joinedAt?.split('T')[0] ?? new Date().toISOString().split('T')[0],
                 tasksCompleted: 0,
@@ -211,10 +231,29 @@ export function ProjectDetails() {
           teamSize: Math.max(apiProject.roles.reduce((sum, role) => sum + (role.headcount ?? 1), 0) + 1, 1),
           estimatedDuration: 4,
         });
-        setLoadError(false);
+        setLoadError(null);
       } catch (err) {
+        const isNotFound =
+          (err instanceof ApiError && err.status === 404) ||
+          (err instanceof Error &&
+            (err.message.toLowerCase().includes('not found') ||
+              err.message.toLowerCase().includes('no encontrado')));
+        if (!cancelled && isNotFound && attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+          if (!cancelled) return loadFromApi(attempt + 1);
+        }
         if (!cancelled) {
-          setLoadError(true);
+          const message =
+            err instanceof ApiError
+              ? err.status === 401
+                ? 'Tu sesión ha expirado. Inicia sesión de nuevo.'
+                : err.status === 403
+                  ? 'No tienes permiso para ver este proyecto.'
+                  : err.status === 404
+                    ? 'Proyecto no encontrado.'
+                    : err.message
+              : 'No se pudo cargar el proyecto.';
+          setLoadError(message);
           setEditableProject(null);
           // eslint-disable-next-line no-console
           console.error('Failed to load project from API', err);
@@ -222,12 +261,14 @@ export function ProjectDetails() {
       } finally {
         if (!cancelled) setIsLoading(false);
       }
-    })();
+    };
+
+    void loadFromApi();
 
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, user?.id]);
 
   if (isLoading && !editableProject) {
     return (
@@ -241,7 +282,12 @@ export function ProjectDetails() {
   if (loadError || !editableProject) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-2xl font-bold mb-2">Proyecto no encontrado</h2>
+        <h2 className="text-2xl font-bold mb-2">{loadError ?? 'Proyecto no encontrado'}</h2>
+        {id && (
+          <p className="text-sm text-muted-foreground mb-4 font-mono break-all">
+            ID: {id}
+          </p>
+        )}
         <Button asChild>
           <Link to="/projects">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -313,7 +359,6 @@ export function ProjectDetails() {
     return false;
   };
 
-  // Persist task status changes to backend when Kanban updates
   const handleTasksChange = async (newTasks: Task[]) => {
     const prev = projectTasks;
 
@@ -327,7 +372,6 @@ export function ProjectDetails() {
       return;
     }
 
-    // Confirma el paso a revision porque desde ahi decide el lider.
     for (const task of changed) {
       const previous = prev.find(pt => pt.id === task.id);
 
@@ -357,27 +401,48 @@ export function ProjectDetails() {
 
     setProjectTasks(newTasks);
 
-    if (!isApiModeEnabled()) return;
+    if (!shouldLoadProjectFromApi(currentProject.id)) {
+      return;
+    }
 
     try {
+      let synced = [...newTasks];
+
       for (const t of changed) {
         const previous = prev.find((pt) => pt.id === t.id);
+        let persistedStatus: TaskStatus = t.status;
+
         if (
           isProjectLeader &&
           previous?.status === 'blocked' &&
           (t.status === 'completed' || t.status === 'in-progress')
         ) {
-          await tasksApi.review(
+          const res = await tasksApi.review(
             t.id,
             t.status === 'completed' ? 'approved' : 'rejected'
           );
+          persistedStatus = apiTaskStatusToUi(res.task.status);
         } else {
-          await tasksApi.updateStatus(t.id, t.status);
+          const res = await tasksApi.updateStatus(t.id, t.status);
+          persistedStatus = apiTaskStatusToUi(res.task.status);
         }
+
+        synced = synced.map((row) =>
+          row.id === t.id ? { ...row, status: persistedStatus } : row
+        );
       }
+
+      setProjectTasks(synced);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to persist task status', err);
+      const detail =
+        err instanceof ApiError
+          ? `[${err.status}] ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : 'Error desconocido';
+      alert(`No se pudo guardar el estado de la tarea: ${detail}`);
       setProjectTasks(prev);
     }
   };
@@ -447,18 +512,24 @@ export function ProjectDetails() {
     setEditingTask(null);
     resetTaskForm();
 
-    if (!isApiModeEnabled()) return;
+    if (!shouldLoadProjectFromApi(currentProject.id)) return;
 
     try {
       if (editingId) {
+        const previousStatus = editingTask?.status;
         const saved = await tasksApi.update(editingId, {
           title: optimisticTask.title,
           description: optimisticTask.description,
           assignedUserId: optimisticTask.assignedTo || null,
-          status: uiTaskStatusToApiCrud(optimisticTask.status),
+          sprint: optimisticTask.sprint ?? currentSprint,
         });
+        let mapped = mapApiTaskToUi(saved, currentProject.id);
+        if (previousStatus !== optimisticTask.status) {
+          const statusRes = await tasksApi.updateStatus(editingId, optimisticTask.status);
+          mapped = { ...mapped, status: apiTaskStatusToUi(statusRes.task.status) };
+        }
         setProjectTasks((tasks) =>
-          tasks.map((t) => (t.id === editingId ? mapApiTaskToUi(saved, currentProject.id) : t))
+          tasks.map((t) => (t.id === editingId ? mapped : t))
         );
       } else {
         const saved = await projectsApi.createTask(currentProject.id, {
@@ -476,7 +547,13 @@ export function ProjectDetails() {
       // eslint-disable-next-line no-console
       console.error('Failed to save task', err);
       setProjectTasks(previousTasks);
-      alert('No se pudo guardar la tarea. Revisa tu sesión y permisos.');
+      const detail =
+        err instanceof ApiError
+          ? `[${err.status}] ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : 'Error desconocido';
+      alert(`No se pudo guardar la tarea: ${detail}`);
     }
   };
 
@@ -538,15 +615,31 @@ export function ProjectDetails() {
     }
   };
 
+  const persistKanbanState = async (state: ApiProjectKanbanState) => {
+    if (!shouldLoadProjectFromApi(currentProject.id) || !isProjectLeader) return;
+    try {
+      await projectsApi.updateKanbanState(currentProject.id, state);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to persist Kanban sprint state', err);
+    }
+  };
+
   const toggleSprint = () => {
-    setSprintActive((prev) => {
-      const next = !prev;
-      if (next) {
-        const maxSprint = projectTasks.reduce((max, t) => Math.max(max, t.sprint ?? 1), 1);
-        setCurrentSprint(maxSprint);
-      }
-      return next;
-    });
+    const maxSprint = projectTasks.reduce((max, t) => Math.max(max, t.sprint ?? 1), 1);
+    const nextActive = !sprintActive;
+    const nextSprint = nextActive ? Math.max(currentSprint, maxSprint) : currentSprint;
+    setSprintActive(nextActive);
+    if (nextActive) {
+      setCurrentSprint(nextSprint);
+    }
+    void persistKanbanState({ sprintActive: nextActive, currentSprint: nextSprint });
+  };
+
+  const changeSprint = (nextSprint: number) => {
+    const safe = Math.max(1, nextSprint);
+    setCurrentSprint(safe);
+    void persistKanbanState({ sprintActive, currentSprint: safe });
   };
 
   const difficultyColors = {
@@ -834,7 +927,7 @@ export function ProjectDetails() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentSprint((s) => Math.max(1, s - 1))}
+                    onClick={() => changeSprint(currentSprint - 1)}
                     disabled={currentSprint <= 1}
                   >
                     Sprint anterior
@@ -843,7 +936,7 @@ export function ProjectDetails() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentSprint((s) => s + 1)}
+                    onClick={() => changeSprint(currentSprint + 1)}
                   >
                     Siguiente sprint
                   </Button>
@@ -1175,6 +1268,7 @@ export function ProjectDetails() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

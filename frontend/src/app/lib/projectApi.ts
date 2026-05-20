@@ -6,6 +6,25 @@ export function isApiModeEnabled(): boolean {
   return import.meta.env.VITE_USE_API_AUTH === 'true' && Boolean(getStoredToken());
 }
 
+/** True when API auth is configured and the route id looks like a backend UUID (not mock ids like p1). */
+export function isApiProjectRouteId(routeId: string | undefined): boolean {
+  if (!routeId?.trim()) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(routeId.trim());
+}
+
+export function shouldLoadProjectFromApi(routeId: string | undefined): boolean {
+  if (import.meta.env.VITE_USE_API_AUTH !== 'true') return false;
+  return Boolean(getStoredToken()) || isApiProjectRouteId(routeId);
+}
+
+function normalizeApiProject(payload: ApiProjectDetails & { projectId?: string }): ApiProjectDetails {
+  const id = payload.id ?? payload.projectId;
+  if (!id) {
+    throw new ApiError('La respuesta del proyecto no incluye un identificador válido', 502);
+  }
+  return { ...payload, id: String(id) };
+}
+
 /** Base URL para rutas `/projects` y `/tasks` (sin prefijo `/api`). */
 export function getResourceApiBase(): string {
   const configured = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '');
@@ -21,6 +40,11 @@ export interface ApiProjectRole {
   headcount?: number;
 }
 
+export interface ApiProjectKanbanState {
+  sprintActive: boolean;
+  currentSprint: number;
+}
+
 export interface ApiProjectDetails {
   id: string;
   title: string;
@@ -29,6 +53,7 @@ export interface ApiProjectDetails {
   createdAt: string;
   leader: { userId: string | null; email: string | null } | null;
   roles: ApiProjectRole[];
+  kanban?: ApiProjectKanbanState;
 }
 
 export interface ApiTask {
@@ -103,9 +128,11 @@ export function mapApiProjectToUi(api: ApiProjectDetails, fallback?: Project): P
       fallback?.requiredRoles ??
       roles.map((r, idx) => ({
         id: `role_${api.id}_${idx}`,
-        name: r.headcount && r.headcount > 1 ? `${r.role} (×${r.headcount})` : r.role,
-        description: r.headcount && r.headcount > 1 ? `${r.headcount} vacantes` : '',
+        name: r.role,
+        description:
+          r.headcount && r.headcount > 1 ? `${r.headcount} vacantes` : '',
         requiredSkills: r.skills,
+        headcount: r.headcount ?? 1,
       })),
     teamSize:
       fallback?.teamSize ??
@@ -119,6 +146,17 @@ export function mapApiProjectToUi(api: ApiProjectDetails, fallback?: Project): P
     category: fallback?.category ?? 'Web Platform',
     difficulty: fallback?.difficulty ?? 'medium',
   };
+}
+
+/** Neo4j puede devolver la misma tarea dos veces (CONTIENE + TIENE_TAREA). */
+export function dedupeApiTasksById(tasks: ApiTask[]): ApiTask[] {
+  const byId = new Map<string, ApiTask>();
+  for (const task of tasks) {
+    const id = task.taskId?.trim();
+    if (!id || byId.has(id)) continue;
+    byId.set(id, task);
+  }
+  return [...byId.values()];
 }
 
 export function mapApiTaskToUi(api: ApiTask, projectId: string): Task {
@@ -172,25 +210,54 @@ export const matchmakingApi = {
 };
 
 export const projectsApi = {
-  list: () => resourceRequest<{ projects: ApiProjectDetails[] }>('/projects'),
+  list: async () => {
+    const { projects } = await resourceRequest<{ projects: Array<ApiProjectDetails & { projectId?: string }> }>(
+      '/projects'
+    );
+    return { projects: projects.map(normalizeApiProject) };
+  },
   listOpenProjects: () => resourceRequest<{ projects: ApiProjectDetails[] }>('/projects/open'),
   create: (body: { title: string; description?: string; roles: ApiProjectRole[] }) =>
-    resourceRequest<{ projectId: string }>('/projects', {
+    resourceRequest<{ projectId: string; project?: ApiProjectDetails }>('/projects', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  get: (projectId: string) => resourceRequest<ApiProjectDetails>(`/projects/${projectId}`),
+  get: async (projectId: string) => {
+    const normalizedId = encodeURIComponent(projectId.trim());
+    const payload = await resourceRequest<ApiProjectDetails & { projectId?: string }>(
+      `/projects/${normalizedId}`
+    );
+    return normalizeApiProject(payload);
+  },
   update: (projectId: string, body: { title?: string; description?: string; roles?: ApiProjectRole[] }) =>
     resourceRequest<{ projectId: string }>(`/projects/${projectId}`, {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
-  listTasks: (projectId: string) => resourceRequest<ApiTask[]>(`/projects/${projectId}/tasks`),
+  listTasks: async (projectId: string): Promise<ApiTask[]> => {
+    const normalizedId = encodeURIComponent(projectId.trim());
+    const payload = await resourceRequest<ApiTask[] | { tasks?: ApiTask[] }>(
+      `/projects/${normalizedId}/tasks`
+    );
+    const raw = Array.isArray(payload) ? payload : Array.isArray(payload.tasks) ? payload.tasks : [];
+    return dedupeApiTasksById(raw);
+  },
+  updateKanbanState: (
+    projectId: string,
+    body: { sprintActive: boolean; currentSprint: number }
+  ) =>
+    resourceRequest<{ kanban: ApiProjectKanbanState }>(
+      `/projects/${encodeURIComponent(projectId.trim())}/kanban-state`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }
+    ),
   createTask: (
     projectId: string,
     body: { title: string; description?: string; assignedUserId?: string | null; sprint?: number }
   ) =>
-    resourceRequest<ApiTask>(`/projects/${projectId}/tasks`, {
+    resourceRequest<ApiTask>(`/projects/${encodeURIComponent(projectId.trim())}/tasks`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -204,34 +271,50 @@ export const tasksApi = {
       description?: string;
       status?: string;
       assignedUserId?: string | null;
+      sprint?: number;
     }
   ) =>
-    resourceRequest<ApiTask>(`/tasks/${taskId}`, {
+    resourceRequest<ApiTask>(`/tasks/${encodeURIComponent(taskId.trim())}`, {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
   updateStatus: (taskId: string, uiStatus: TaskStatus) =>
-    resourceRequest<{ task: { taskId: string; status: string } }>(`/tasks/${taskId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status: uiTaskStatusToWorkflowPatch(uiStatus) }),
-    }),
+    resourceRequest<{ task: { taskId: string; status: string } }>(
+      `/tasks/${encodeURIComponent(taskId.trim())}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: uiTaskStatusToWorkflowPatch(uiStatus) }),
+      }
+    ),
   review: (taskId: string, decision: 'approved' | 'rejected', comment?: string) =>
-    resourceRequest<{ task: { taskId: string; status: string } }>(`/tasks/${taskId}/review`, {
-      method: 'POST',
-      body: JSON.stringify({ decision, comment: comment ?? null }),
-    }),
+    resourceRequest<{ task: { taskId: string; status: string } }>(
+      `/tasks/${encodeURIComponent(taskId.trim())}/review`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ decision, comment: comment ?? null }),
+      }
+    ),
   delete: (taskId: string) =>
     resourceRequest<{ message: string }>(`/tasks/${taskId}`, { method: 'DELETE' }),
 };
 
 export const teamsApi = {
-  getComposition: (projectId: string) =>
-    resourceRequest<ApiTeamComposition>(`/teams/${projectId}`),
+  getComposition: async (projectId: string): Promise<ApiTeamComposition> => {
+    const normalizedId = encodeURIComponent(projectId.trim());
+    const payload = await resourceRequest<{ team: ApiTeamComposition }>(`/teams/${normalizedId}`);
+    const team = payload.team;
+    if (!team?.id) {
+      throw new ApiError('La respuesta del equipo no incluye datos válidos', 502);
+    }
+    return team;
+  },
   updateMembers: (
     projectId: string,
     body: { add?: Array<{ userId: string; rol: string }>; remove?: string[] }
   ) =>
-    resourceRequest<{ projectId: string; added: string[]; removed: string[] }>(`/teams/${projectId}/members`, {
+    resourceRequest<{ projectId: string; added: string[]; removed: string[] }>(
+      `/teams/${encodeURIComponent(projectId.trim())}/members`,
+      {
       method: 'PUT',
       body: JSON.stringify(body),
     }),

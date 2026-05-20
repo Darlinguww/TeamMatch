@@ -13,7 +13,9 @@ export interface TaskRepository {
   isUserInProjectByTask(userId: string, taskId: string): Promise<boolean>;
   isUserProjectLeader?(userId: string, projectId: string): Promise<boolean>;
   isUserProjectLeaderByTask?(userId: string, taskId: string): Promise<boolean>;
+  findProjectLeaderId?(projectId: string): Promise<string | null>;
   isTaskInProject(taskId: string): Promise<boolean>;
+  getProjectIdForTask?(taskId: string): Promise<string | null>;
   createTask(input: CreateTaskInput): Promise<Task>;
   listProjectTasks(projectId: string, status?: TaskStatus): Promise<Task[]>;
   getTask(taskId: string): Promise<Task | null>;
@@ -41,14 +43,15 @@ export class TaskService {
     const assignedUserId = this.parseOptionalUserId(input.assignedUserId ?? input.userAsigned);
     const sprint = this.parseOptionalSprint(input.sprint);
 
-    await this.ensureProjectLeader(userId, projectId);
+    const normalizedProjectId = projectId.trim();
+    await this.ensureProjectLeader(userId, normalizedProjectId);
 
     if (assignedUserId) {
-      await this.ensureProjectAccess(assignedUserId, projectId);
+      await this.ensureProjectAccess(assignedUserId, normalizedProjectId);
     }
 
     return this.repository.createTask({
-      projectId,
+      projectId: normalizedProjectId,
       title,
       description,
       assignedUserId,
@@ -57,9 +60,10 @@ export class TaskService {
   }
 
   public async listProjectTasks(userId: string, projectId: string, rawStatus?: unknown): Promise<Task[]> {
-    await this.ensureProjectAccess(userId, projectId);
+    const normalizedProjectId = projectId.trim();
+    await this.ensureProjectAccess(userId, normalizedProjectId);
     const status = rawStatus === undefined ? undefined : this.parseStatus(rawStatus);
-    return this.repository.listProjectTasks(projectId, status);
+    return this.repository.listProjectTasks(normalizedProjectId, status);
   }
 
   public async getTask(userId: string, taskId: string): Promise<Task> {
@@ -76,7 +80,14 @@ export class TaskService {
   public async updateTask(
     userId: string,
     taskId: string,
-    input: { title?: unknown; description?: unknown; status?: unknown; userAsigned?: unknown; assignedUserId?: unknown }
+    input: {
+      title?: unknown;
+      description?: unknown;
+      status?: unknown;
+      sprint?: unknown;
+      userAsigned?: unknown;
+      assignedUserId?: unknown;
+    }
   ): Promise<Task> {
     await this.ensureTaskLeader(userId, taskId);
     const currentTask = await this.repository.getTask(taskId);
@@ -94,7 +105,9 @@ export class TaskService {
     }
     if (Object.prototype.hasOwnProperty.call(input, 'status')) {
       patch.status = this.parseStatus(input.status);
-      this.ensureValidStatusTransition(currentTask.status, patch.status);
+      if (!(await this.isUserLeaderForTask(userId, taskId))) {
+        this.ensureValidStatusTransition(currentTask.status, patch.status);
+      }
     }
     if (
       Object.prototype.hasOwnProperty.call(input, 'assignedUserId') ||
@@ -105,6 +118,9 @@ export class TaskService {
       if (patch.assignedUserId) {
         await this.ensureTaskAccess(patch.assignedUserId, taskId);
       }
+    }
+    if (Object.prototype.hasOwnProperty.call(input, 'sprint')) {
+      patch.sprint = this.parseOptionalSprint(input.sprint);
     }
 
     const updatedTask = await this.repository.updateTask(patch);
@@ -174,15 +190,37 @@ export class TaskService {
       throw new NotFoundError('Tarea no encontrada');
     }
 
-    if (this.repository.isUserProjectLeaderByTask) {
-      const isLeader = await this.repository.isUserProjectLeaderByTask(userId, taskId);
-      if (!isLeader) {
-        throw new ForbiddenError('Only project leaders can manage tasks');
-      }
+    if (await this.isUserLeaderForTask(userId, taskId)) {
       return;
     }
 
-    await this.ensureTaskAccess(userId, taskId);
+    throw new ForbiddenError('Only project leaders can manage tasks');
+  }
+
+  private async isUserLeaderForTask(userId: string, taskId: string): Promise<boolean> {
+    if (this.repository.isUserProjectLeaderByTask) {
+      const byTask = await this.repository.isUserProjectLeaderByTask(userId, taskId);
+      if (byTask) return true;
+    }
+
+    if (this.repository.getProjectIdForTask) {
+      const projectId = await this.repository.getProjectIdForTask(taskId);
+      if (projectId) {
+        if (this.repository.isUserProjectLeader) {
+          const isLeader = await this.repository.isUserProjectLeader(userId, projectId);
+          if (isLeader) return true;
+        }
+
+        if (this.repository.findProjectLeaderId) {
+          const leaderId = await this.repository.findProjectLeaderId(projectId);
+          if (leaderId && leaderId === userId) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
   }
 
   private async ensureTaskAccess(userId: string, taskId: string): Promise<void> {
@@ -243,11 +281,34 @@ export class TaskService {
   }
 
   private parseStatus(value: unknown): TaskStatus {
-    if (typeof value !== 'string' || !TASK_STATUSES.includes(value as TaskStatus)) {
+    if (typeof value !== 'string' || !value.trim()) {
       throw new BadRequestError('Estado no valido');
     }
 
-    return value as TaskStatus;
+    const raw = value.trim();
+    if (TASK_STATUSES.includes(raw as TaskStatus)) {
+      return raw as TaskStatus;
+    }
+
+    const normalized = raw.toLowerCase().replace(/_/g, ' ');
+    const aliases: Record<string, TaskStatus> = {
+      pendiente: 'pendiente',
+      pending: 'pendiente',
+      'en progreso': 'en progreso',
+      'in progress': 'en progreso',
+      in_progress: 'en progreso',
+      'en revision': 'en revision',
+      'en revisión': 'en revision',
+      'in review': 'en revision',
+      in_review: 'en revision',
+      completada: 'completada',
+      completed: 'completada',
+    };
+
+    const mapped = aliases[normalized];
+    if (mapped) return mapped;
+
+    throw new BadRequestError('Estado no valido');
   }
 
   private ensureValidStatusTransition(currentStatus: TaskStatus, nextStatus: TaskStatus): void {

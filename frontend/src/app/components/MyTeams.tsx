@@ -1,36 +1,108 @@
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
-import { 
-  Users, 
+import {
+  Users,
   Briefcase,
   CheckCircle2,
   Clock,
   ArrowRight,
-  Target
+  Target,
+  Loader2,
 } from 'lucide-react';
-import { currentUser, mockProjects, mockTeamMembers, mockTasks, mockUsers } from '../lib/mockData';
+import { currentUser, mockProjects, mockTeamMembers, mockTasks, mockUsers, type Project } from '../lib/mockData';
 import { Link } from 'react-router';
 import { useAuth } from '../lib/authContext';
-import { isApiModeEnabled } from '../lib/projectApi';
+import { isApiModeEnabled, mapApiProjectToUi, projectsApi } from '../lib/projectApi';
+
+type TeamMembership = {
+  role: string;
+  tasksCompleted: number;
+  totalTasks: number;
+  rating?: number;
+};
+
+type ProjectWithMembership = Project & { membership: TeamMembership };
 
 export function MyTeams() {
   const { user } = useAuth();
   const apiMode = isApiModeEnabled();
   const effectiveUser = apiMode ? user : currentUser;
-  const myTeamMemberships = apiMode ? [] : mockTeamMembers.filter((tm) => tm.userId === effectiveUser?.id);
-  const myProjects = apiMode ? [] : myTeamMemberships.map((tm) => ({
-    ...mockProjects.find((p) => p.id === tm.projectId)!,
-    membership: tm,
-  }));
 
-  const activeProjects = myProjects.filter((p) => p.status === 'in-progress');
+  const [apiProjects, setApiProjects] = useState<ProjectWithMembership[]>([]);
+  const [loadingApi, setLoadingApi] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!apiMode || !effectiveUser?.id) {
+      setApiProjects([]);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setLoadingApi(true);
+      setApiError(null);
+      try {
+        const { projects } = await projectsApi.list();
+        if (cancelled) return;
+
+        const mapped = projects.map((apiProject) => {
+          const project = mapApiProjectToUi(apiProject);
+          const isLeader = apiProject.leader?.userId === effectiveUser.id;
+          return {
+            ...project,
+            status: project.status === 'open' && isLeader ? 'in-progress' : project.status,
+            membership: {
+              role: isLeader ? 'Líder' : 'Miembro',
+              tasksCompleted: 0,
+              totalTasks: 0,
+            },
+          } satisfies ProjectWithMembership;
+        });
+
+        setApiProjects(mapped);
+      } catch (error) {
+        if (!cancelled) {
+          setApiError(error instanceof Error ? error.message : 'No se pudieron cargar tus equipos');
+          setApiProjects([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingApi(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiMode, effectiveUser?.id]);
+
+  const myTeamMemberships = apiMode ? [] : mockTeamMembers.filter((tm) => tm.userId === effectiveUser?.id);
+  const mockProjectsWithMembership: ProjectWithMembership[] = apiMode
+    ? []
+    : myTeamMemberships.map((tm) => ({
+        ...mockProjects.find((p) => p.id === tm.projectId)!,
+        membership: tm,
+      }));
+
+  const myProjects = apiMode ? apiProjects : mockProjectsWithMembership;
+
+  const activeProjects = myProjects.filter((p) => p.status === 'in-progress' || p.status === 'open');
   const completedProjects = myProjects.filter((p) => p.status === 'completed');
+
+  if (apiMode && loadingApi) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+        <Loader2 className="mb-4 h-10 w-10 animate-spin text-primary" />
+        <p>Cargando tus equipos…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Mis Equipos</h2>
@@ -38,7 +110,12 @@ export function MyTeams() {
         </div>
       </div>
 
-      {/* Stats */}
+      {apiError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {apiError}
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="p-6">
@@ -65,7 +142,9 @@ export function MyTeams() {
             <div className="flex items-center justify-between mb-2">
               <Target className="h-5 w-5 text-purple-600" />
               <span className="text-2xl font-bold">
-                {myTeamMemberships.reduce((acc, tm) => acc + tm.tasksCompleted, 0)}
+                {apiMode
+                  ? '—'
+                  : myTeamMemberships.reduce((acc, tm) => acc + tm.tasksCompleted, 0)}
               </span>
             </div>
             <p className="text-sm text-muted-foreground">Tareas Completadas</p>
@@ -73,7 +152,6 @@ export function MyTeams() {
         </Card>
       </div>
 
-      {/* Active Projects */}
       {activeProjects.length > 0 && (
         <Card>
           <CardHeader>
@@ -83,13 +161,22 @@ export function MyTeams() {
           <CardContent>
             <div className="space-y-4">
               {activeProjects.map((project) => {
-                const progress = (project.membership.tasksCompleted / project.membership.totalTasks) * 100;
-                const teamMembers = mockTeamMembers
-                  .filter(tm => tm.projectId === project.id)
-                  .map(tm => mockUsers.find(u => u.id === tm.userId)!);
-                const projectTasks = mockTasks.filter(t => t.projectId === project.id);
-                const myTasks = projectTasks.filter(t => t.assignedTo === currentUser.id);
-                const pendingTasks = myTasks.filter(t => t.status !== 'completed');
+                const progress =
+                  project.membership.totalTasks > 0
+                    ? (project.membership.tasksCompleted / project.membership.totalTasks) * 100
+                    : 0;
+                const teamMembers = apiMode
+                  ? []
+                  : mockTeamMembers
+                      .filter((tm) => tm.projectId === project.id)
+                      .map((tm) => mockUsers.find((u) => u.id === tm.userId)!);
+                const projectTasks = apiMode
+                  ? []
+                  : mockTasks.filter((t) => t.projectId === project.id);
+                const myTasks = apiMode
+                  ? []
+                  : projectTasks.filter((t) => t.assignedTo === effectiveUser?.id);
+                const pendingTasks = myTasks.filter((t) => t.status !== 'completed');
 
                 return (
                   <Card key={project.id} className="border-primary/20">
@@ -100,13 +187,15 @@ export function MyTeams() {
                             <h3 className="text-xl font-bold">{project.name}</h3>
                             <Badge variant="outline">{project.membership.role}</Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground mb-3">
-                            {project.description}
-                          </p>
+                          <p className="text-sm text-muted-foreground mb-3">{project.description}</p>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Users className="h-4 w-4" />
-                              <span>{teamMembers.length} miembros</span>
+                              <span>
+                                {apiMode
+                                  ? `${project.currentTeamSize}/${project.teamSize} miembros`
+                                  : `${teamMembers.length} miembros`}
+                              </span>
                             </div>
                             <div className="flex items-center gap-1">
                               <Clock className="h-4 w-4" />
@@ -123,58 +212,56 @@ export function MyTeams() {
                         </Button>
                       </div>
 
-                      <div className="grid gap-4 md:grid-cols-3">
-                        <div className="p-4 rounded-lg bg-muted/50">
-                          <p className="text-sm text-muted-foreground mb-2">Mi Progreso</p>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-2xl font-bold">{progress.toFixed(0)}%</span>
-                            <span className="text-sm text-muted-foreground">
-                              {project.membership.tasksCompleted}/{project.membership.totalTasks}
-                            </span>
+                      {!apiMode && (
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <div className="p-4 rounded-lg bg-muted/50">
+                            <p className="text-sm text-muted-foreground mb-2">Mi Progreso</p>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-2xl font-bold">{progress.toFixed(0)}%</span>
+                              <span className="text-sm text-muted-foreground">
+                                {project.membership.tasksCompleted}/{project.membership.totalTasks}
+                              </span>
+                            </div>
+                            <Progress value={progress} />
                           </div>
-                          <Progress value={progress} />
-                        </div>
 
-                        <div className="p-4 rounded-lg bg-muted/50">
-                          <p className="text-sm text-muted-foreground mb-2">Tareas Pendientes</p>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-2xl font-bold">{pendingTasks.length}</span>
-                            <Badge variant={pendingTasks.length > 3 ? 'destructive' : 'secondary'}>
-                              {pendingTasks.length > 3 ? 'Alta carga' : 'Normal'}
-                            </Badge>
+                          <div className="p-4 rounded-lg bg-muted/50">
+                            <p className="text-sm text-muted-foreground mb-2">Tareas Pendientes</p>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-2xl font-bold">{pendingTasks.length}</span>
+                              <Badge variant={pendingTasks.length > 3 ? 'destructive' : 'secondary'}>
+                                {pendingTasks.length > 3 ? 'Alta carga' : 'Normal'}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {pendingTasks.length > 0
+                                ? `${pendingTasks.filter((t) => t.priority === 'high').length} de alta prioridad`
+                                : '¡Todo al día!'}
+                            </p>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {pendingTasks.length > 0 
-                              ? `${pendingTasks.filter(t => t.priority === 'high').length} de alta prioridad`
-                              : '¡Todo al día!'}
-                          </p>
-                        </div>
 
-                        <div className="p-4 rounded-lg bg-muted/50">
-                          <p className="text-sm text-muted-foreground mb-2">Equipo</p>
-                          <div className="flex -space-x-2 mb-2">
-                            {teamMembers.slice(0, 4).map((member) => (
-                              <div
-                                key={member.id}
-                                className="h-8 w-8 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center"
-                                title={member.name}
-                              >
-                                <span className="text-xs text-primary font-medium">
-                                  {member.name.split(' ').map(n => n[0]).join('')}
-                                </span>
-                              </div>
-                            ))}
-                            {teamMembers.length > 4 && (
-                              <div className="h-8 w-8 rounded-full bg-muted border-2 border-background flex items-center justify-center">
-                                <span className="text-xs font-medium">+{teamMembers.length - 4}</span>
-                              </div>
-                            )}
+                          <div className="p-4 rounded-lg bg-muted/50">
+                            <p className="text-sm text-muted-foreground mb-2">Equipo</p>
+                            <div className="flex -space-x-2 mb-2">
+                              {teamMembers.slice(0, 4).map((member) => (
+                                <div
+                                  key={member.id}
+                                  className="h-8 w-8 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center"
+                                  title={member.name}
+                                >
+                                  <span className="text-xs text-primary font-medium">
+                                    {member.name
+                                      .split(' ')
+                                      .map((n) => n[0])
+                                      .join('')}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{teamMembers.length} colaboradores</p>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {teamMembers.length} colaboradores
-                          </p>
                         </div>
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
                 );
@@ -184,7 +271,6 @@ export function MyTeams() {
         </Card>
       )}
 
-      {/* Completed Projects */}
       {completedProjects.length > 0 && (
         <Card>
           <CardHeader>
@@ -214,9 +300,7 @@ export function MyTeams() {
                       )}
                     </div>
                     <Button variant="outline" size="sm" className="w-full" asChild>
-                      <Link to={`/projects/${project.id}`}>
-                        Ver Detalles
-                      </Link>
+                      <Link to={`/projects/${project.id}`}>Ver Detalles</Link>
                     </Button>
                   </CardContent>
                 </Card>
@@ -232,9 +316,7 @@ export function MyTeams() {
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="font-medium mb-2">Aún no eres parte de ningún equipo</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              {apiMode
-                ? 'Tu cuenta está conectada al backend, pero aún no hay datos de equipos disponibles en esta vista.'
-                : 'Explora proyectos disponibles y únete a un equipo'}
+              Explora proyectos disponibles o crea uno nuevo para formar tu equipo
             </p>
             <Button asChild>
               <Link to="/projects">

@@ -78,7 +78,9 @@ export class TaskWorkflowRepository {
               previousStatusKey,
               actorMembership IS NOT NULL AS actorIsMember,
               actorIsAssigned,
-              leader IS NOT NULL AND leader.userId = $actorUserId AS actorIsLeader
+              coalesce(actorMembership.isLeader, false) = true
+                OR toLower(coalesce(actorMembership.role, actorMembership.rol, '')) IN ['leader', 'lider', 'líder']
+                OR (leader IS NOT NULL AND leader.userId = $actorUserId) AS actorIsLeader
          WITH project,
               task,
               actor,

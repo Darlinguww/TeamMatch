@@ -7,10 +7,12 @@ export class Neo4jTeamRepository implements TeamRepositoryContract {
 
     try {
       const result = await session.run(
-        `MATCH (:Usuario {userId: $userId})-[:PERTENECE_A {rol: 'lider'}]->(:Proyecto {projectId: $projectId})
+        `MATCH (:Usuario {userId: $userId})-[rel:PERTENECE_A]->(project:Proyecto)
+         WHERE (project.projectId = $projectId OR project.proyectoId = $projectId)
+           AND coalesce(rel.rol, rel.role) = 'lider'
          RETURN 1 AS found
          LIMIT 1`,
-        { userId, projectId }
+        { userId, projectId: projectId.trim() }
       );
       return result.records.length > 0;
     } finally {
@@ -40,10 +42,11 @@ export class Neo4jTeamRepository implements TeamRepositoryContract {
 
     try {
       const result = await session.run(
-        `MATCH (u:Usuario)-[membership:PERTENECE_A]->(:Proyecto {projectId: $projectId})
-         WHERE u.userId IN $userIds
+        `MATCH (u:Usuario)-[membership:PERTENECE_A]->(project:Proyecto)
+         WHERE (project.projectId = $projectId OR project.proyectoId = $projectId)
+           AND u.userId IN $userIds
          RETURN u.userId AS userId, membership.rol AS rol`,
-        { projectId, userIds }
+        { projectId: projectId.trim(), userIds }
       );
 
       return result.records.map((record) => ({
@@ -61,11 +64,13 @@ export class Neo4jTeamRepository implements TeamRepositoryContract {
     try {
       const result = await session.run(
         `UNWIND $members AS member
-         MATCH (user:Usuario {userId: member.userId}), (project:Proyecto {projectId: $projectId})
+         MATCH (user:Usuario {userId: member.userId}), (project:Proyecto)
+         WHERE project.projectId = $projectId OR project.proyectoId = $projectId
          MERGE (user)-[membership:PERTENECE_A]->(project)
-         SET membership.rol = member.rol
+         SET membership.rol = member.rol,
+             membership.role = member.rol
          RETURN collect(DISTINCT user.userId) AS addedIds`,
-        { projectId, members }
+        { projectId: projectId.trim(), members }
       );
       return ((result.records[0]?.get('addedIds') as string[] | undefined) ?? []).map(String);
     } finally {
@@ -78,11 +83,12 @@ export class Neo4jTeamRepository implements TeamRepositoryContract {
 
     try {
       const result = await session.run(
-        `MATCH (user:Usuario)-[membership:PERTENECE_A]->(:Proyecto {projectId: $projectId})
-         WHERE user.userId IN $userIds
+        `MATCH (user:Usuario)-[membership:PERTENECE_A]->(project:Proyecto)
+         WHERE (project.projectId = $projectId OR project.proyectoId = $projectId)
+           AND user.userId IN $userIds
          DELETE membership
          RETURN collect(DISTINCT user.userId) AS removedIds`,
-        { projectId, userIds }
+        { projectId: projectId.trim(), userIds }
       );
       return ((result.records[0]?.get('removedIds') as string[] | undefined) ?? []).map(String);
     } finally {

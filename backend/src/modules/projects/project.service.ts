@@ -10,7 +10,9 @@ import {
   ProjectRoleInput,
   SemanticIndexRebuildInput,
   SemanticIndexRebuildResult,
-  ProjectSummary
+  ProjectKanbanState,
+  ProjectSummary,
+  UpdateProjectKanbanInput
 } from './types/project.types.js';
 
 const EXACT_SKILL_WEIGHT = 1;
@@ -20,6 +22,29 @@ const DEFAULT_SIMILARITY_CUTOFF = 0.35;
 const DEFAULT_TOP_K = 10;
 const MIN_TOP_K = 1;
 const MAX_TOP_K = 50;
+
+/** Combina entradas con el mismo nombre de rol sumando vacantes y uniendo skills. */
+export function mergeProjectRoles(roles: ProjectRoleInput[]): ProjectRoleInput[] {
+  const merged = new Map<string, ProjectRoleInput>();
+
+  for (const role of roles) {
+    const name = role.role.trim();
+    const key = name.toLowerCase();
+    const headcount = Math.max(1, Math.min(20, role.headcount ?? 1));
+    const skills = [...new Set(role.skills.map((s) => s.trim()).filter(Boolean))];
+    const existing = merged.get(key);
+
+    if (existing) {
+      existing.headcount = Math.min(20, (existing.headcount ?? 1) + headcount);
+      existing.skills = [...new Set([...existing.skills, ...skills])];
+      continue;
+    }
+
+    merged.set(key, { role: name, skills, headcount });
+  }
+
+  return Array.from(merged.values());
+}
 
 export interface ProjectRepository {
   findMissingSkillNames(skillNames: string[]): Promise<string[]>;
@@ -37,6 +62,7 @@ export interface ProjectRepository {
   isUserMemberOfProject(userId: string, projectId: string): Promise<boolean>;
   hasFeedbackBetweenUsers(projectId: string, fromUserId: string, toUserId: string): Promise<boolean>;
   createFeedbackRelationship(projectId: string, fromUserId: string, toUserId: string, score: number, comment: string | null, createdAt: string): Promise<void>;
+  updateProjectKanban(userId: string, projectId: string, input: UpdateProjectKanbanInput): Promise<ProjectKanbanState>;
 }
 
 export class ProjectService {
@@ -65,7 +91,8 @@ export class ProjectService {
   }
 
   public async getProject(userId: string, projectId: string): Promise<ProjectDetails> {
-    const project = await this.repository.findProjectForUser(userId, projectId);
+    const normalizedProjectId = projectId.trim();
+    const project = await this.repository.findProjectForUser(userId, normalizedProjectId);
 
     if (!project) {
       throw new NotFoundError('Project not found');
@@ -99,6 +126,43 @@ export class ProjectService {
     await this.repository.updateProject(userId, projectId, { title, description, roles });
 
     return { projectId };
+  }
+
+  public async updateProjectKanban(
+    userId: string,
+    projectId: string,
+    input: { sprintActive?: unknown; currentSprint?: unknown }
+  ): Promise<ProjectKanbanState> {
+    const currentProject = await this.repository.findProjectForUser(userId, projectId.trim());
+
+    if (!currentProject) {
+      throw new NotFoundError('Project not found');
+    }
+
+    if (currentProject.leader.userId !== userId) {
+      throw new ForbiddenError('Only project leaders can update Kanban sprint state');
+    }
+
+    const sprintActive = input.sprintActive === true;
+    const currentSprint = this.parseCurrentSprint(input.currentSprint, currentProject.kanban.currentSprint);
+
+    return this.repository.updateProjectKanban(userId, projectId.trim(), {
+      sprintActive,
+      currentSprint
+    });
+  }
+
+  private parseCurrentSprint(value: unknown, fallback: number): number {
+    if (value === undefined || value === null || value === '') {
+      return fallback;
+    }
+
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 99) {
+      throw new BadRequestError('currentSprint debe ser un entero entre 1 y 99');
+    }
+
+    return parsed;
   }
 
   public async findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[]> {
@@ -156,7 +220,7 @@ export class ProjectService {
       throw new BadRequestError('Debe definir al menos un rol');
     }
 
-    return value.map((item, index) => {
+    const parsed = value.map((item, index) => {
       if (!item || typeof item !== 'object') {
         throw new BadRequestError(`Rol invalido en la posicion ${index}`);
       }
@@ -181,15 +245,17 @@ export class ProjectService {
 
       let headcount = 1;
       if (rawRole.headcount !== undefined && rawRole.headcount !== null && rawRole.headcount !== '') {
-        const parsed = Number(rawRole.headcount);
-        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) {
+        const parsedHeadcount = Number(rawRole.headcount);
+        if (!Number.isInteger(parsedHeadcount) || parsedHeadcount < 1 || parsedHeadcount > 20) {
           throw new BadRequestError(`El rol '${role}' debe tener headcount entre 1 y 20`);
         }
-        headcount = parsed;
+        headcount = parsedHeadcount;
       }
 
       return { role, skills, headcount };
     });
+
+    return mergeProjectRoles(parsed);
   }
 
   private parseSimilarityCutoff(value: unknown): number {

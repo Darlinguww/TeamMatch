@@ -1,3 +1,4 @@
+import { env } from '../../config/env.js';
 import { BadRequestError, NotFoundError, BadGatewayError, UnprocessableEntityError } from '../../shared/errors/HttpErrors.js';
 import {
   extractSkillsHeuristic,
@@ -108,7 +109,7 @@ export class ProfileService {
     }
 
     const cleanedText = sanitizeAiPrompt(combinedText);
-    const aiUrl = process.env.AI_SERVICE_URL?.trim();
+    const aiUrl = env.aiServiceUrl?.trim();
 
     if (!aiUrl) {
       console.warn('[profile] AI_SERVICE_URL no configurado; usando extracción heurística local.');
@@ -183,8 +184,10 @@ export class ProfileService {
       return { skills: parsed, source };
     }
 
-    if (source === 'heuristic') {
-      return { skills: [], source: 'heuristic' };
+    const heuristicSkills = extractSkillsHeuristic(cleanedText);
+    if (heuristicSkills.length > 0) {
+      console.warn('[profile] IA sin habilidades parseables; usando extracción heurística local.');
+      return { skills: heuristicSkills, source: 'heuristic' };
     }
 
     throw new BadRequestError(

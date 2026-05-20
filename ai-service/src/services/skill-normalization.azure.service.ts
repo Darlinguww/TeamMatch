@@ -19,39 +19,43 @@ export interface ProcessSkillsResult {
 
 export type { Profile, ProjectRequirement } from '../types/ai.types.js';
 
-const PROCESS_SKILLS_SYSTEM_PROMPT = `Eres un asistente experto de TeamMatch. Tu tarea es INTERPRETAR texto libre (CV, descripción personal, notas) y extraer TODAS las habilidades que el texto sugiera o mencione explícitamente.
+const PROCESS_SKILLS_SYSTEM_PROMPT = `Eres un asistente experto de TeamMatch. INTERPRETA texto libre (CV, bio, notas, descripción de perfil) en español o inglés y extrae TODAS las habilidades, competencias, áreas e intereses que el texto sugiera — no solo tecnologías.
 
-Incluye sin limitarte a un catálogo fijo:
-- Tecnologías, lenguajes, frameworks, herramientas (Docker, Figma, Excel, SAP, etc.)
-- Áreas de conocimiento (ciberseguridad, redes, contabilidad, finanzas, RRHH, marketing, salud, educación, etc.)
-- Metodologías (Scrum, Kanban, ágiles)
-- Competencias blandas (liderazgo, comunicación, negociación, trabajo en equipo, mentoría, etc.)
-- Idiomas si aparecen
+Debes detectar explícita O implícitamente, por ejemplo:
+- "trabajo bien en equipo" / "work well in teams" → Trabajo en equipo (soft)
+- "me gusta liderar proyectos" → Liderazgo (soft)
+- "enfocado en UI/UX" → UX/UI (technical)
+- "ayudo a organizar tareas" → Organización (soft)
+- "buena comunicación" → Comunicación (soft)
+- "resolución de problemas" → Resolución de problemas (soft)
+- "creativo", "proactivo", "empatía", "mentoría", "presentaciones"
+- áreas: marketing, finanzas, RRHH, educación, salud, producto, datos, IA
+- herramientas y lenguajes: Python, React, Figma, Excel, etc.
+- metodologías: Scrum, Kanban, ágiles
+- idiomas si aparecen
 
-Si el texto menciona años de experiencia con una habilidad, inclúyela y rellena yearsOfExperience.
-Puedes alinear nombres con términos habituales del dominio (p. ej. "React" en lugar de "reactjs"), pero NO omitas habilidades solo porque no estén en una lista cerrada.
-
-Categorías (campo category): technical | soft | domain | language
-- technical: habilidades técnicas o herramientas
-- soft: competencias interpersonales o de gestión humana
-- domain: conocimiento de negocio o sector (finanzas, logística, etc.)
+Categorías (category):
+- technical: herramientas, lenguajes, diseño técnico, UX/UI, QA, cloud, etc.
+- soft: colaboración, liderazgo, comunicación, organización, creatividad, autonomía, gestión del tiempo, orientación al cliente
+- domain: sector o área profesional (finanzas, logística, producto, intereses profesionales)
 - language: idiomas
 
-Responde ÚNICAMENTE con JSON válido (sin markdown):
+Incluye yearsOfExperience si el texto menciona años. confidence entre 0 y 1.
+NO omitas competencias blandas por ser "no técnicas". NO devuelvas solo lenguajes de programación si el texto también describe habilidades humanas.
+
+Responde ÚNICAMENTE JSON válido (sin markdown):
 {
   "skills": [
     {
       "original": "fragmento del texto",
-      "normalized": "nombre canónico de la habilidad",
+      "normalized": "nombre canónico",
       "category": "technical|soft|domain|language",
       "confidence": 0.0,
       "yearsOfExperience": 0
     }
   ]
 }
-
-confidence: número entre 0 y 1 según qué tan claro esté en el texto.
-Si no hay habilidades interpretables, devuelve { "skills": [] }.`;
+Si no hay nada interpretable: { "skills": [] }.`;
 
 function parseJsonResponse<T>(rawText: string): T {
   const trimmed = rawText.trim();

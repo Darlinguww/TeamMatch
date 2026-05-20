@@ -129,6 +129,110 @@ export const SKILL_CATALOG: CatalogSkill[] = [
   { pattern: /\blog[ií]stica\b|supply\s+chain/i, name: 'Logística', category: 'domain' },
   { pattern: /\biot\b|internet\s+de\s+las\s+cosas/i, name: 'IoT', category: 'technical' },
   { pattern: /\bblockchain\b/i, name: 'Blockchain', category: 'technical' },
+  // Competencias blandas e intereses (frases naturales — español e inglés)
+  {
+    pattern:
+      /\bwork\s+well\s+in\s+teams?\b|\b(me\s+)?(?:va\s+)?bien\s+trabajar\s+en\s+equipo\b|\btrabajo\s+bien\s+en\s+equipo\b|\bteam\s+player\b|\bcolaborativo\b|\bcolaboraci[oó]n\s+en\s+equipo\b/i,
+    name: 'Trabajo en equipo',
+    category: 'soft',
+  },
+  {
+    pattern:
+      /\b(me\s+)?gusta\s+(?:liderar|dirigir)\b|\blike\s+leading\b|\bliderar\s+proyectos\b|\bleading\s+projects\b|\bme\s+interesa\s+el\s+liderazgo\b/i,
+    name: 'Liderazgo',
+    category: 'soft',
+  },
+  {
+    pattern:
+      /\b(?:enfocad[oa]|orientad[oa]|especializad[oa])\s+en\s+(?:la\s+)?(?:ui\/?ux|experiencia\s+de\s+usuario|dise[nñ]o\s+(?:de\s+)?interfaces?)\b|\bfocused\s+on\s+(?:ui\/?ux|user\s+experience)\b/i,
+    name: 'UX/UI',
+    category: 'technical',
+  },
+  {
+    pattern:
+      /\b(?:ayudo|ayudar|help)\s+(?:a\s+)?organizar\s+tareas\b|\borganizaci[oó]n\s+de\s+tareas\b|\bplanificaci[oó]n\s+y\s+seguimiento\b/i,
+    name: 'Organización',
+    category: 'soft',
+  },
+  {
+    pattern:
+      /\bbuen[ao]s?\s+(?:en|at\s+)?comunicaci[oó]n\b|\bgood\s+(?:at\s+)?communication\b|\bcomunicarme\s+bien\b|\bhabilidades?\s+de\s+comunicaci[oó]n\b|\btengo\s+(?:buena\s+)?comunicaci[oó]n\b/i,
+    name: 'Comunicación',
+    category: 'soft',
+  },
+  {
+    pattern:
+      /\bresoluci[oó]n\s+de\s+problemas\b|\bproblem\s+solving\b|\bresolver\s+problemas\b|\bsoluci[oó]n\s+de\s+problemas\b|\bpienso\s+de\s+forma\s+anal[ií]tica\b/i,
+    name: 'Resolución de problemas',
+    category: 'soft',
+  },
+  {
+    pattern: /\bproactiv[oa]\b|\bproactive\b|\btomo\s+iniciativa\b/i,
+    name: 'Proactividad',
+    category: 'soft',
+  },
+  {
+    pattern: /\badaptabilidad\b|\badaptable\b|\bme\s+adapto\s+(?:bien\s+)?(?:a\s+)?cambios\b/i,
+    name: 'Adaptabilidad',
+    category: 'soft',
+  },
+  {
+    pattern: /\batenci[oó]n\s+al\s+detalle\b|\bdetail[- ]oriented\b/i,
+    name: 'Atención al detalle',
+    category: 'soft',
+  },
+  {
+    pattern: /\bautonom[ií]a\b|\bself[- ]?managed\b|\btrabajo\s+de\s+forma\s+aut[oó]noma\b/i,
+    name: 'Autonomía',
+    category: 'soft',
+  },
+  {
+    pattern: /\binteligencia\s+emocional\b|\bemotional\s+intelligence\b|\bieq\b/i,
+    name: 'Inteligencia emocional',
+    category: 'soft',
+  },
+  {
+    pattern: /\bgesti[oó]n\s+del\s+tiempo\b|\btime\s+management\b|\bpriorizar\s+tareas\b/i,
+    name: 'Gestión del tiempo',
+    category: 'soft',
+  },
+  {
+    pattern: /\borientaci[oó]n\s+al\s+(?:cliente|usuario)\b|\bcustomer[- ]centric\b|\buser[- ]centric\b/i,
+    name: 'Orientación al cliente',
+    category: 'soft',
+  },
+  {
+    pattern: /\bcreativ[oa]s?\b|\bcreativity\b|\bpienso\s+de\s+forma\s+creativa\b/i,
+    name: 'Creatividad',
+    category: 'soft',
+  },
+  {
+    pattern:
+      /\bfuerte\s+en\s+colaboraci[oó]n\b|\bcolaboro\s+bien\b|\bme\s+destaco\s+en\s+trabajo\s+en\s+equipo\b/i,
+    name: 'Trabajo en equipo',
+    category: 'soft',
+  },
+  {
+    pattern:
+      /\binter[eé]s\s+en\s+(?:marketing|dise[nñ]o|datos|ia|inteligencia\s+artificial|producto|startups?)\b|\bpassionate\s+about\s+(?:design|data|ai|product)\b/i,
+    name: 'Intereses profesionales',
+    category: 'domain',
+  },
+  {
+    pattern: /\bespecialidad\s+en\b|\bespecializado\s+en\b|\bspecialty\s+in\b|\bspecialized\s+in\b/i,
+    name: 'Especialidad',
+    category: 'domain',
+  },
+  {
+    pattern: /\bdise[nñ]o\s+gr[aá]fico\b|\bgraphic\s+design\b/i,
+    name: 'Diseño gráfico',
+    category: 'technical',
+  },
+  {
+    pattern: /\barquitectura\s+de\s+software\b|\bsoftware\s+architecture\b/i,
+    name: 'Arquitectura de software',
+    category: 'technical',
+  },
 ];
 
 export const SKILL_NAME_LIST = [...new Set(SKILL_CATALOG.map((s) => s.name))].sort((a, b) =>

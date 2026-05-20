@@ -16,7 +16,6 @@ interface DragItem {
 const COLUMNS: { id: TaskStatus; title: string; accent: string; headerBg: string }[] = [
   { id: 'pending', title: 'Pendiente', accent: 'border-slate-300', headerBg: 'bg-slate-100' },
   { id: 'in-progress', title: 'En progreso', accent: 'border-blue-300', headerBg: 'bg-blue-50' },
-  // Keep id 'blocked' for compatibility but show it as 'En revisión' in the UI
   { id: 'blocked', title: 'En revisión', accent: 'border-amber-300', headerBg: 'bg-amber-50' },
   { id: 'completed', title: 'Completada', accent: 'border-green-300', headerBg: 'bg-green-50' },
 ];

@@ -13,8 +13,9 @@ const projectService = new ProjectService(new Neo4jProjectRepository());
 const taskService = new TaskService(new Neo4jTaskRepository());
 
 router.post('/', requireAuth, asyncHandler(async (req, res) => {
-  const result = await projectService.createProject(req.user!.userId, req.body ?? {});
-  res.status(201).json(result);
+  const { projectId } = await projectService.createProject(req.user!.userId, req.body ?? {});
+  const project = await projectService.getProject(req.user!.userId, projectId);
+  res.status(201).json({ projectId, project });
 }));
 
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
@@ -35,6 +36,11 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
 router.put('/:id', requireAuth, asyncHandler(async (req, res) => {
   const result = await projectService.updateProject(req.user!.userId, req.params.id, req.body ?? {});
   res.status(200).json(result);
+}));
+
+router.patch('/:id/kanban-state', requireAuth, asyncHandler(async (req, res) => {
+  const kanban = await projectService.updateProjectKanban(req.user!.userId, req.params.id, req.body ?? {});
+  res.status(200).json({ kanban });
 }));
 
 router.get('/:id/match/phase1', requireAuth, asyncHandler(async (req, res) => {

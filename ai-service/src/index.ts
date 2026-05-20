@@ -1,5 +1,6 @@
 import './load-env.js';
 import express, { Express, Request, Response, NextFunction } from 'express';
+import { isAzureOpenAIConfigured } from './config/ai.config.js';
 import { initAzureOpenAIClient } from './services/llm/azure-openai.client.js';
 import aiRoutes from './routes/ai.routes.js';
 import matchmakingRoutes from './routes/matchmaking.routes.js';
@@ -7,7 +8,13 @@ import { DocumentoDemasiadoGrandeError } from './services/llm/document-size.vali
 import { AzureOpenAIUnavailableError } from './services/llm/azure-openai.errors.js';
 
 // Azure OpenAI (gpt-4.1-mini) — extracción, disponibilidad y matchmaking
-initAzureOpenAIClient();
+if (isAzureOpenAIConfigured()) {
+  initAzureOpenAIClient();
+} else {
+  console.warn(
+    '[ai-service] Azure OpenAI no configurado. El servicio arrancará con extracción heurística/manual donde aplique.',
+  );
+}
 
 const app: Express = express();
 const PORT: number = Number(process.env.PORT) || 3001;

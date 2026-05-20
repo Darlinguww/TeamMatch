@@ -7,9 +7,11 @@ import {
   ProjectMatchWeights,
   ProjectPhaseOneCandidate,
   ProjectPhaseTwoCandidate,
+  ProjectKanbanState,
   ProjectRoleInput,
   SemanticIndexRebuildResult,
-  ProjectSummary
+  ProjectSummary,
+  UpdateProjectKanbanInput
 } from '../types/project.types.js';
 import { ProjectRepository as ProjectRepositoryContract } from '../project.service.js';
 
@@ -46,6 +48,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
            title: $title,
            description: $description,
            summary: $summary,
+           status: 'open',
+           kanbanSprintActive: false,
+           kanbanCurrentSprint: 1,
            createdAt: $createdAt
          })
          MERGE (leader)-[membership:PERTENECE_A]->(project)
@@ -224,8 +229,14 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
 
     try {
       const result = await session.run(
-        `MATCH (:Usuario {userId: $userId})-[:PERTENECE_A]->(p:Proyecto {projectId: $projectId})
-         OPTIONAL MATCH (p)<-[leaderRel:PERTENECE_A {rol: 'lider'}]-(leader:Usuario)
+        `MATCH (:Usuario {userId: $userId})-[:PERTENECE_A]->(p:Proyecto)
+         WHERE p.projectId = $projectId OR p.proyectoId = $projectId
+         OPTIONAL MATCH (p)<-[leaderRel:PERTENECE_A]-(leader:Usuario)
+         WHERE coalesce(leaderRel.rol, leaderRel.role) = 'lider'
+            OR coalesce(leaderRel.isLeader, false) = true
+         WITH p, leader
+         ORDER BY leader.userId
+         WITH p, head(collect(leader)) AS leader
          OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
          OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
          WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
@@ -234,13 +245,15 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
            skills: skills,
            headcount: coalesce(r.headcount, 1)
          }) AS roles
-         RETURN p.projectId AS projectId,
+         RETURN coalesce(p.projectId, p.proyectoId) AS projectId,
                 p.title AS title,
                 p.description AS description,
                 p.summary AS summary,
                 p.createdAt AS createdAt,
                 leader.userId AS leaderId,
                 leader.email AS leaderEmail,
+                coalesce(p.kanbanSprintActive, false) AS kanbanSprintActive,
+                coalesce(p.kanbanCurrentSprint, 1) AS kanbanCurrentSprint,
                 roles
          LIMIT 1`,
         { userId, projectId }
@@ -250,10 +263,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
         return null;
       }
 
-      return {
-        ...this.mapProjectSummary(result.records[0]),
-        description: String(result.records[0].get('description') ?? '')
-      };
+      return this.mapProjectDetails(result.records[0]);
     } finally {
       await session.close();
     }
@@ -608,6 +618,57 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     } finally {
       await session.close();
     }
+  }
+
+  public async updateProjectKanban(
+    userId: string,
+    projectId: string,
+    input: UpdateProjectKanbanInput
+  ): Promise<ProjectKanbanState> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (:Usuario {userId: $userId})-[m:PERTENECE_A]->(p:Proyecto)
+         WHERE (p.projectId = $projectId OR p.proyectoId = $projectId)
+           AND (coalesce(m.isLeader, false) = true OR coalesce(m.rol, m.role) = 'lider')
+         SET p.kanbanSprintActive = $sprintActive,
+             p.kanbanCurrentSprint = $currentSprint,
+             p.updatedAt = $updatedAt
+         RETURN coalesce(p.kanbanSprintActive, false) AS kanbanSprintActive,
+                coalesce(p.kanbanCurrentSprint, 1) AS kanbanCurrentSprint`,
+        {
+          userId,
+          projectId,
+          sprintActive: input.sprintActive,
+          currentSprint: input.currentSprint,
+          updatedAt: new Date().toISOString()
+        }
+      );
+
+      if (!result.records[0]) {
+        throw new NotFoundError('Project not found or user is not the leader');
+      }
+
+      return this.mapKanbanState(result.records[0]);
+    } finally {
+      await session.close();
+    }
+  }
+
+  private mapKanbanState(record: { get(key: string): unknown }): ProjectKanbanState {
+    return {
+      sprintActive: record.get('kanbanSprintActive') === true,
+      currentSprint: this.toNumber(record.get('kanbanCurrentSprint')) || 1
+    };
+  }
+
+  private mapProjectDetails(record: { get(key: string): unknown }): ProjectDetails {
+    return {
+      ...this.mapProjectSummary(record),
+      description: String(record.get('description') ?? ''),
+      kanban: this.mapKanbanState(record)
+    };
   }
 
   private mapProjectSummary(record: { get(key: string): unknown }): ProjectSummary {

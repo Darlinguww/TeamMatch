@@ -6,7 +6,7 @@ export class TeamsService {
   public constructor(private readonly teamRepository: TeamDetailRepository) {}
 
   public async getTeamComposition(teamId: string): Promise<TeamComposition> {
-    const team = await this.teamRepository.findCompositionById(teamId);
+    const team = await this.teamRepository.findCompositionById(teamId.trim());
 
     if (!team) {
       throw new NotFoundError('Team not found');

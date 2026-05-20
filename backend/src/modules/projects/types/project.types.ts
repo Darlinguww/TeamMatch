@@ -22,8 +22,19 @@ export interface ProjectSummary {
   roles: ProjectRoleInput[];
 }
 
+export interface ProjectKanbanState {
+  sprintActive: boolean;
+  currentSprint: number;
+}
+
 export interface ProjectDetails extends ProjectSummary {
   description: string;
+  kanban: ProjectKanbanState;
+}
+
+export interface UpdateProjectKanbanInput {
+  sprintActive: boolean;
+  currentSprint: number;
 }
 
 export interface ProjectPhaseOneCandidate {

@@ -9,11 +9,12 @@ export class TasksService {
   public constructor(private readonly taskRepository: TaskWorkflowRepository) {}
 
   public async updateStatus(taskId: string, actorUserId: string, input: UpdateTaskStatusDto): Promise<UpdateTaskStatusResult> {
+    const canonicalStatus = this.toCanonicalStatus(input.status);
     const statusUpdate = await this.taskRepository.updateStatus({
       taskId,
       actorUserId,
-      status: this.toCanonicalStatus(input.status),
-      normalizedStatus: this.normalizeStatusKey(input.status),
+      status: canonicalStatus,
+      normalizedStatus: this.normalizeStatusKey(canonicalStatus),
       eventId: randomUUID(),
       notificationId: randomUUID(),
       occurredAt: new Date().toISOString()

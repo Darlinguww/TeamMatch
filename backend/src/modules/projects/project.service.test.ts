@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../../shared/errors/AppError.js';
 import { BadRequestError, NotFoundError } from '../../shared/errors/HttpErrors.js';
-import { ProjectRepository, ProjectService } from './project.service.js';
+import { mergeProjectRoles, ProjectRepository, ProjectService } from './project.service.js';
 import {
   CreateProjectInput,
   ProjectDetails,
@@ -40,6 +40,34 @@ class FakeProjectRepository implements ProjectRepository {
     return null;
   }
 
+  public async listOpenProjects(): Promise<ProjectSummary[]> {
+    return [];
+  }
+
+  public async updateProject(): Promise<ProjectDetails> {
+    throw new Error('not implemented');
+  }
+
+  public async findProjectLeader(): Promise<string | null> {
+    return null;
+  }
+
+  public async setProjectStatusAndFeedback(): Promise<void> {}
+
+  public async isUserMemberOfProject(): Promise<boolean> {
+    return false;
+  }
+
+  public async hasFeedbackBetweenUsers(): Promise<boolean> {
+    return false;
+  }
+
+  public async createFeedbackRelationship(): Promise<void> {}
+
+  public async updateProjectKanban(): Promise<{ sprintActive: boolean; currentSprint: number }> {
+    return { sprintActive: false, currentSprint: 1 };
+  }
+
   public async findPhaseOneCandidates(): Promise<ProjectPhaseOneCandidate[] | null> {
     return [];
   }
@@ -66,6 +94,21 @@ class FakeProjectRepository implements ProjectRepository {
     };
   }
 }
+
+describe('mergeProjectRoles', () => {
+  it('fusiona roles repetidos sumando vacantes y uniendo skills', () => {
+    const merged = mergeProjectRoles([
+      { role: 'Frontend Developer', skills: ['React'], headcount: 1 },
+      { role: 'frontend developer', skills: ['TypeScript'], headcount: 2 },
+      { role: 'Backend Developer', skills: ['Node.js'], headcount: 1 },
+    ]);
+
+    expect(merged).toHaveLength(2);
+    const frontend = merged.find((role) => role.role === 'Frontend Developer');
+    expect(frontend?.headcount).toBe(3);
+    expect(frontend?.skills).toEqual(expect.arrayContaining(['React', 'TypeScript']));
+  });
+});
 
 describe('ProjectService Fase 2 matchmaking', () => {
   it('devuelve candidatos de Fase 2 con pesos exactos, similares y complementarios', async () => {
