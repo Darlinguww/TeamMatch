@@ -23,8 +23,27 @@ export interface Task {
   description: string;
   createdAt: string;
   status: TaskStatus;
+  version: number;
   assignedUserId: string | null;
   assignedUserEmail: string | null;
+}
+
+export interface UpdateTaskStatusOptimisticInput {
+  projectId: string;
+  taskId: string;
+  expectedStatus: TaskStatus;
+  expectedVersion: number;
+  newStatus: TaskStatus;
+}
+
+export type UpdateTaskStatusOptimisticResult =
+  | { conflict: true }
+  | { conflict: false; projectId: string; task: Task };
+
+export interface TaskStatusUpdatedEvent {
+  projectId: string;
+  task: Task;
+  updatedBy: string;
 }
 
 export interface TaskReview {

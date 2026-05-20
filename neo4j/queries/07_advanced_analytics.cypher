@@ -21,7 +21,7 @@ WITH u, e,
 WITH u, promedioNota, exp(-$lambda * dias) AS factorDecay
 
 // Calculamos la nota final ponderada por el tiempo
-RETURN u.nombre AS candidato,
+RETURN u.name AS candidato,
        u.email AS email,
        count(promedioNota) AS evaluaciones_recibidas,
        sum(promedioNota * factorDecay) / sum(factorDecay) AS reputación_score_temporal
@@ -34,18 +34,18 @@ ORDER BY reputación_score_temporal DESC;
 // Mide la afinidad de un usuario con las áreas maestras de un proyecto
 // basándose en cuántas habilidades posee de dicho ecosistema.
 // Parámetros: $proyectoId
-MATCH (p:Proyecto {proyectoId: $proyectoId})
-MATCH (p)-[:REQUIERE]->(hReq:Habilidad)
+MATCH (p:Proyecto { projectId: $projectId })
+MATCH (p)-[:TIENE_ROL]->(:Rol)-[:REQUIERE]->(hReq:Habilidad)
 
 // Buscamos usuarios que compartan esas mismas habilidades
 MATCH (u:Usuario)-[t:TIENE_HABILIDAD]->(hReq)
 
-WITH p, u, count(hReq) AS habilidades_comunes, collect(hReq.nombre) AS detalles_skills
-MATCH (p)-[:REQUIERE]->(totalReq:Habilidad)
+WITH p, u, count(hReq) AS habilidades_comunes, collect(hReq.name) AS detalles_skills
+MATCH (p)-[:TIENE_ROL]->(:Rol)-[:REQUIERE]->(totalReq:Habilidad)
 
 WITH p, u, habilidades_comunes, detalles_skills, count(totalReq) AS total_proyecto
 
-RETURN u.nombre AS candidato,
+RETURN u.name AS candidato,
        u.email AS email,
        detalles_skills AS tecnologias_compartidas,
        habilidades_comunes AS cantidad_coincidencias,

@@ -1,5 +1,14 @@
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
-import { CreateTaskInput, TASK_STATUSES, Task, TaskReview, TaskStatus, UpdateTaskInput } from './types/task.types.js';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import {
+  CreateTaskInput,
+  TASK_STATUSES,
+  Task,
+  TaskReview,
+  TaskStatus,
+  UpdateTaskInput,
+  UpdateTaskStatusOptimisticInput,
+  UpdateTaskStatusOptimisticResult,
+} from './types/task.types.js';
 
 const ALLOWED_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   pendiente: ['en progreso'],
@@ -16,6 +25,10 @@ export interface TaskRepository {
   listProjectTasks(projectId: string, status?: TaskStatus): Promise<Task[]>;
   getTask(taskId: string): Promise<Task | null>;
   updateTask(input: UpdateTaskInput): Promise<Task | null>;
+  getTaskProjectId(taskId: string): Promise<string | null>;
+  updateTaskStatusOptimistic(
+    input: UpdateTaskStatusOptimisticInput,
+  ): Promise<UpdateTaskStatusOptimisticResult>;
   deleteTask(taskId: string): Promise<boolean>;
   createReview(taskId: string, reviewerId: string, rating: number, comment: string): Promise<TaskReview | null>;
 }
@@ -137,6 +150,55 @@ export class TaskService {
     }
 
     return review;
+  }
+
+  /** Usado por Socket.io al unirse a la room del proyecto. */
+  public async ensureProjectAccessForSocket(userId: string, projectId: string): Promise<void> {
+    await this.ensureProjectAccess(userId, projectId);
+  }
+
+  /**
+   * Actualiza estado con control optimista (SCRUM-202).
+   * Lanza ConflictError (409) si otro usuario modificó la tarea primero.
+   */
+  public async updateTaskStatusViaSocket(
+    userId: string,
+    input: {
+      projectId: string;
+      taskId: string;
+      expectedStatus: string;
+      expectedVersion: number;
+      newStatus: string;
+    },
+  ): Promise<Task> {
+    await this.ensureProjectAccess(userId, input.projectId);
+    await this.ensureTaskAccess(userId, input.taskId);
+
+    const taskProjectId = await this.repository.getTaskProjectId(input.taskId);
+    if (taskProjectId !== input.projectId) {
+      throw new NotFoundError('Tarea no pertenece al proyecto');
+    }
+
+    const expectedStatus = this.parseStatus(input.expectedStatus);
+    const newStatus = this.parseStatus(input.newStatus);
+    this.ensureValidStatusTransition(expectedStatus, newStatus);
+
+    const result = await this.repository.updateTaskStatusOptimistic({
+      projectId: input.projectId,
+      taskId: input.taskId,
+      expectedStatus,
+      expectedVersion: input.expectedVersion,
+      newStatus,
+    });
+
+    if (result.conflict) {
+      throw new ConflictError(
+        'La tarea fue modificada por otro usuario. Recarga el tablero e intenta de nuevo.',
+        { taskId: input.taskId },
+      );
+    }
+
+    return result.task;
   }
 
   private async ensureProjectAccess(userId: string, projectId: string): Promise<void> {

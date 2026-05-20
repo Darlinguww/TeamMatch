@@ -1,8 +1,8 @@
-// Crear índices de búsqueda rápida (SCRUM-144)
-CREATE INDEX habilidad_nombre_idx IF NOT EXISTS
+// Índices base (esquema canónico)
+CREATE INDEX habilidad_name_idx IF NOT EXISTS
 FOR (h:Habilidad)
-ON (h.nombre);
+ON (h.name);
 
-CREATE INDEX habilidad_normalizado_idx IF NOT EXISTS
+CREATE INDEX habilidad_normalized_name_idx IF NOT EXISTS
 FOR (h:Habilidad)
-ON (h.nombreNormalizado);
+ON (h.normalizedName);

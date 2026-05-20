@@ -1,6 +1,18 @@
 import { randomUUID } from 'crypto';
 import { driver } from '../../../database/neo4j.js';
-import { CreateTaskInput, Task, TaskReview, TaskStatus, UpdateTaskInput } from '../types/task.types.js';
+import {
+  GET_TASK_PROJECT_ID,
+  UPDATE_TASK_STATUS_OPTIMISTIC,
+} from '../../../database/cypher/task-optimistic.js';
+import {
+  CreateTaskInput,
+  Task,
+  TaskReview,
+  TaskStatus,
+  UpdateTaskInput,
+  UpdateTaskStatusOptimisticInput,
+  UpdateTaskStatusOptimisticResult,
+} from '../types/task.types.js';
 import { TaskRepository as TaskRepositoryContract } from '../task.service.js';
 
 export class Neo4jTaskRepository implements TaskRepositoryContract {
@@ -65,7 +77,8 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
            title: $title,
            description: $description,
            createdAt: $createdAt,
-           status: 'pendiente'
+           status: 'pendiente',
+           version: 1
          })
          MERGE (project)-[:CONTIENE]->(task)
          WITH task
@@ -78,6 +91,7 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
                 task.description AS description,
                 task.createdAt AS createdAt,
                 task.status AS status,
+                coalesce(task.version, 1) AS version,
                 assigned.userId AS assignedUserId,
                 assigned.email AS assignedUserEmail`,
         {
@@ -109,6 +123,7 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
                 task.description AS description,
                 task.createdAt AS createdAt,
                 task.status AS status,
+                coalesce(task.version, 1) AS version,
                 assigned.userId AS assignedUserId,
                 assigned.email AS assignedUserEmail
          ORDER BY task.createdAt DESC`,
@@ -133,6 +148,7 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
                 task.description AS description,
                 task.createdAt AS createdAt,
                 task.status AS status,
+                coalesce(task.version, 1) AS version,
                 assigned.userId AS assignedUserId,
                 assigned.email AS assignedUserEmail
          LIMIT 1`,
@@ -140,6 +156,47 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
       );
 
       return result.records[0] ? this.mapTask(result.records[0]) : null;
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async getTaskProjectId(taskId: string): Promise<string | null> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(GET_TASK_PROJECT_ID, { taskId });
+      const projectId = result.records[0]?.get('projectId');
+      return projectId ? String(projectId) : null;
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async updateTaskStatusOptimistic(
+    input: UpdateTaskStatusOptimisticInput,
+  ): Promise<UpdateTaskStatusOptimisticResult> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(UPDATE_TASK_STATUS_OPTIMISTIC, {
+        projectId: input.projectId,
+        taskId: input.taskId,
+        expectedStatus: input.expectedStatus,
+        expectedVersion: input.expectedVersion,
+        newStatus: input.newStatus,
+      });
+
+      if (result.records.length === 0) {
+        return { conflict: true };
+      }
+
+      const record = result.records[0];
+      return {
+        conflict: false,
+        projectId: String(record.get('projectId')),
+        task: this.mapTask(record),
+      };
     } finally {
       await session.close();
     }
@@ -154,6 +211,10 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
          SET task.title = coalesce($title, task.title),
              task.description = coalesce($description, task.description),
              task.status = coalesce($status, task.status),
+             task.version = CASE
+               WHEN $status IS NOT NULL THEN coalesce(task.version, 0) + 1
+               ELSE coalesce(task.version, 1)
+             END,
              task.updatedAt = $updatedAt
          WITH task
          OPTIONAL MATCH (task)<-[oldAssignment:ASIGNADO_A]-(:Usuario)
@@ -172,6 +233,7 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
                 task.description AS description,
                 task.createdAt AS createdAt,
                 task.status AS status,
+                coalesce(task.version, 1) AS version,
                 assigned.userId AS assignedUserId,
                 assigned.email AS assignedUserEmail
          LIMIT 1`,
@@ -257,6 +319,7 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
       description: String(record.get('description') ?? ''),
       createdAt: String(record.get('createdAt')),
       status: record.get('status') as TaskStatus,
+      version: Number(record.get('version') ?? 1),
       assignedUserId: record.get('assignedUserId') ? String(record.get('assignedUserId')) : null,
       assignedUserEmail: record.get('assignedUserEmail') ? String(record.get('assignedUserEmail')) : null
     };

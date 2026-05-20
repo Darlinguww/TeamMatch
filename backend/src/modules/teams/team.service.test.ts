@@ -34,6 +34,21 @@ class FakeTeamRepository implements TeamRepository {
     userIds.forEach((userId) => memberships.delete(userId));
     return userIds;
   }
+
+  public async assignMemberFromMatchmaking(userId: string, projectId: string, rol: string) {
+    if (!this.users.has(userId)) {
+      return null;
+    }
+    const memberships = this.memberships.get(projectId) ?? new Map<string, string>();
+    memberships.set(userId, rol);
+    this.memberships.set(projectId, memberships);
+    return {
+      userId,
+      projectId,
+      rol,
+      fechaAsignacion: new Date().toISOString(),
+    };
+  }
 }
 
 let repository: FakeTeamRepository;

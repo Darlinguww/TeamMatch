@@ -16,10 +16,23 @@ export interface TeamMembersResult {
   removed: string[];
 }
 
+/** Resultado de asignación vía matchmaking (SCRUM-167). */
+export interface MatchmakingAssignment {
+  userId: string;
+  projectId: string;
+  rol: string;
+  fechaAsignacion: string;
+}
+
 export interface TeamRepository {
   isProjectLeader(userId: string, projectId: string): Promise<boolean>;
   findMissingUserIds(userIds: string[]): Promise<string[]>;
   findProjectMemberships(projectId: string, userIds: string[]): Promise<Array<{ userId: string; rol: string }>>;
+  assignMemberFromMatchmaking(
+    userId: string,
+    projectId: string,
+    rol: string,
+  ): Promise<MatchmakingAssignment | null>;
   addMembers(projectId: string, members: TeamMemberInput[]): Promise<string[]>;
   removeMembers(projectId: string, userIds: string[]): Promise<string[]>;
 }

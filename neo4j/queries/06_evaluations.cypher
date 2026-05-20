@@ -1,33 +1,15 @@
-// =======================================================================
-// SCRUM-223: SISTEMA DE CO-EVALUACIÓN Y RESTRICCIONES DE UNICIDAD
-// Consultas y reglas de integridad para el Backend de TeamMatch
-// =======================================================================
-
-// -----------------------------------------------------------------------
-// TAREA A: Crear Constraint de Evaluación Única
-// -----------------------------------------------------------------------
-// Asegura que no exista más de una relación EVALUÓ entre el mismo par de
-// usuarios para un mismo proyectoID, blindando el sistema contra IDOR o duplicados.
+// SCRUM-223 — Co-evaluación (esquema canónico: projectId)
 CREATE CONSTRAINT evaluacion_unica_idx IF NOT EXISTS
 FOR ()-[r:EVALUO]-()
-REQUIRE (r.evaluadorId, r.evaluadoId, r.proyectoId) IS UNIQUE;
+REQUIRE (r.evaluadorId, r.evaluadoId, r.projectId) IS UNIQUE;
 
+MATCH (evaluador:Usuario { email: $emailEvaluador })
+MATCH (evaluado:Usuario { email: $emailEvaluado })
+MATCH (evaluador)-[:PERTENECE_A]->(p:Proyecto { projectId: $projectId })<-[:PERTENECE_A]-(evaluado)
 
-// -----------------------------------------------------------------------
-// TAREA B: Registrar una nueva Co-evaluación
-// -----------------------------------------------------------------------
-// Parámetros: $emailEvaluador, $emailEvaluado, $proyectoId, 
-//             $notaCom, $notaResp, $notaTec, $comentario
-MATCH (evaluador:Usuario {email: $emailEvaluador})
-MATCH (evaluado:Usuario {email: $emailEvaluado})
-
-// Validamos estructuralmente que ambos pertenezcan al mismo proyecto antes de evaluar
-MATCH (evaluador)-[:PERTENECE_A]->(p:Proyecto {proyectoId: $proyectoId})<-[:PERTENECE_A]-(evaluado)
-
-// Creamos la relación aplicando las propiedades oficiales del PDF
 MERGE (evaluador)-[e:EVALUO]->(evaluado)
-ON CREATE SET 
-  e.proyectoId = p.proyectoId,
+ON CREATE SET
+  e.projectId = p.projectId,
   e.evaluadorId = evaluador.userId,
   e.evaluadoId = evaluado.userId,
   e.nota_comunicacion = toFloat($notaCom),
@@ -35,4 +17,4 @@ ON CREATE SET
   e.nota_tecnica = toFloat($notaTec),
   e.comentario = $comentario
 
-RETURN evaluador.nombre AS de, evaluado.nombre AS para, e.comentario AS feedback;
+RETURN evaluador.name AS de, evaluado.name AS para, e.comentario AS feedback;

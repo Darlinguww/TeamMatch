@@ -1,3 +1,7 @@
+/**
+ * API REST de TeamMatch.
+ * WebSockets (SCRUM-202): Socket.io se monta en el servidor HTTP — ver index.ts e initSocketServer().
+ */
 import express, { Express } from 'express';
 import cors, { CorsOptions } from 'cors';
 import authRoutes, { requireAuth } from './modules/auth/auth.routes.js';

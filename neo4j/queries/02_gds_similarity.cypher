@@ -22,7 +22,7 @@ RETURN graphName, nodeCount, relationshipCount;
 
 // TAREA B: Similitud Jaccard nativa (Cypher)
 // Mide coincidencia exacta de habilidades: interseccion / union
-MATCH (p:Proyecto {proyectoId: $proyectoId})-[:REQUIERE]->(hReq:Habilidad)
+MATCH (p:Proyecto {projectId: $projectId})-[:TIENE_ROL]->(:Rol)-[:REQUIERE]->(hReq:Habilidad)
 WITH p, collect(DISTINCT id(hReq)) AS proyectoSkillIds
 
 MATCH (u:Usuario)-[:TIENE_HABILIDAD]->(hUser:Habilidad)
@@ -40,7 +40,7 @@ WITH u, p, interseccion, diferencia,
 
 WHERE scoreJaccard > 0.1
 
-RETURN u.nombre AS candidato, 
+RETURN u.name AS candidato, 
        u.email AS correo, 
        scoreJaccard AS score_compatibilidad,
        size(interseccion) AS habilidades_coincidentes
@@ -50,7 +50,7 @@ LIMIT 10;
 
 // TAREA C: Similitud ponderada nativa (Cypher)
 // Suma ponderada de coincidencias por nivel/prioridad
-MATCH (p:Proyecto {proyectoId: $proyectoId})-[r:REQUIERE]->(h:Habilidad)
+MATCH (p:Proyecto {projectId: $projectId})-[:TIENE_ROL]->(:Rol)-[r:REQUIERE]->(h:Habilidad)
 WITH p, h, 
      CASE r.prioridad 
        WHEN 'alta' THEN 3.0 
@@ -88,6 +88,6 @@ WITH u, requisitos, pesoTotal, usuarioSkills,
 
 WHERE scorePonderado > 0.0
 
-RETURN u.nombre AS candidato, 
+RETURN u.name AS candidato, 
        scorePonderado AS score_afin_ajustado
 ORDER BY score_afin_ajustado DESC;

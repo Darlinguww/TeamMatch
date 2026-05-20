@@ -9,8 +9,8 @@ CALL gds.graph.project(
   'teamgraph',
   {
     Usuario: { properties: ['userId', 'name'] },
-    Habilidad: { properties: ['nombre', 'categoria'] },
-    Proyecto: { properties: ['projectId', 'nombre'] }
+    Habilidad: { properties: ['name', 'category'] },
+    Proyecto: { properties: ['projectId', 'title'] }
   },
   {
     TIENE_HABILIDAD: { type: 'TIENE_HABILIDAD', properties: ['nivel'], orientation: 'UNDIRECTED' },
