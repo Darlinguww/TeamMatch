@@ -33,10 +33,13 @@ function serializeMember(value: unknown): TeamMember | null {
     return null;
   }
 
+  const rolRaw = value.rol ?? value.role;
+
   return {
     userId,
     user: serializeString(value.user),
-    joinedAt: serializeOptionalString(value.joinedAt)
+    joinedAt: serializeOptionalString(value.joinedAt),
+    rol: typeof rolRaw === 'string' && rolRaw.trim() ? rolRaw.trim() : null
   };
 }
 
@@ -51,12 +54,15 @@ function serializeRole(value: unknown): TeamRole | null {
     return null;
   }
 
+  const headcount = Number(value.headcount ?? 1);
+
   return {
     roleId: serializeString(value.roleId),
     name,
     skills: Array.isArray(value.skills)
       ? value.skills.filter((skill): skill is string => typeof skill === 'string' && skill.trim().length > 0)
-      : []
+      : [],
+    headcount: Number.isFinite(headcount) && headcount > 0 ? Math.min(20, Math.floor(headcount)) : 1
   };
 }
 

@@ -199,7 +199,7 @@ export class MatchmakingRepository {
            CALL {
              WITH member
              OPTIONAL MATCH (member)-[experienceRel:TIENE_EXPERIENCIA_EN]->(skill:Habilidad)
-             WITH skill, experienceRel
+             WITH member, skill, experienceRel
              ORDER BY toLower(coalesce(skill.name, ''))
              RETURN [item IN collect(
                CASE

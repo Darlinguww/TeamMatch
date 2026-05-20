@@ -5,11 +5,14 @@ import { requireAuth } from '../auth/auth.routes.js';
 import { asyncHandler } from '../../shared/middlewares/asyncHandler.js';
 import { Neo4jTaskRepository } from '../tasks/repositories/task.repository.js';
 import { TaskService } from '../tasks/task.service.js';
+import { ParticipationRepository } from '../participation/participation.repository.js';
+import { ParticipationService } from '../participation/participation.service.js';
 import { Neo4jProjectRepository } from './repositories/project.repository.js';
 import { ProjectService } from './project.service.js';
 
 const router = Router();
 const projectService = new ProjectService(new Neo4jProjectRepository());
+const participationService = new ParticipationService(new ParticipationRepository());
 const taskService = new TaskService(new Neo4jTaskRepository());
 
 router.post('/', requireAuth, asyncHandler(async (req, res) => {
@@ -23,9 +26,43 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
   res.status(200).json({ projects });
 }));
 
-router.get('/open', requireAuth, asyncHandler(async (_req, res) => {
-  const projects = await projectService.listOpenProjects();
+router.get('/open', requireAuth, asyncHandler(async (req, res) => {
+  const projects = await projectService.listOpenProjects(req.user!.userId);
   res.status(200).json({ projects });
+}));
+
+router.get('/:id/participation-status', requireAuth, asyncHandler(async (req, res) => {
+  const status = await participationService.getParticipationStatus(req.params.id, req.user!.userId);
+  res.status(200).json(status);
+}));
+
+router.post('/:id/join-requests', requireAuth, asyncHandler(async (req, res) => {
+  const request = await participationService.requestJoinProject(
+    req.user!.userId,
+    req.params.id,
+    req.body?.message
+  );
+  res.status(201).json({ request });
+}));
+
+router.post('/:id/role-applications', requireAuth, asyncHandler(async (req, res) => {
+  const request = await participationService.applyToRole(
+    req.user!.userId,
+    req.params.id,
+    req.body?.roleName,
+    req.body?.message
+  );
+  res.status(201).json({ request });
+}));
+
+/** @deprecated Use POST /:id/join-requests — creates a pending request for leader approval */
+router.post('/:id/join', requireAuth, asyncHandler(async (req, res) => {
+  const request = await participationService.requestJoinProject(
+    req.user!.userId,
+    req.params.id,
+    req.body?.message
+  );
+  res.status(201).json({ request, message: 'Solicitud enviada. El líder la revisará en Alertas.' });
 }));
 
 router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
@@ -34,8 +71,8 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 router.put('/:id', requireAuth, asyncHandler(async (req, res) => {
-  const result = await projectService.updateProject(req.user!.userId, req.params.id, req.body ?? {});
-  res.status(200).json(result);
+  const project = await projectService.updateProject(req.user!.userId, req.params.id, req.body ?? {});
+  res.status(200).json({ projectId: project.id, project });
 }));
 
 router.patch('/:id/kanban-state', requireAuth, asyncHandler(async (req, res) => {

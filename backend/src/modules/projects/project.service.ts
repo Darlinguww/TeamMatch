@@ -51,8 +51,14 @@ export interface ProjectRepository {
   createProject(leaderId: string, projectId: string, input: CreateProjectInput): Promise<void>;
   listProjectsForUser(userId: string): Promise<ProjectSummary[]>;
   findProjectForUser(userId: string, projectId: string): Promise<ProjectDetails | null>;
-  listOpenProjects(): Promise<ProjectSummary[]>;
-  updateProject(userId: string, projectId: string, input: CreateProjectInput): Promise<ProjectDetails>;
+  findOpenProjectById(projectId: string): Promise<ProjectDetails | null>;
+  listOpenProjects(userId: string): Promise<ProjectSummary[]>;
+  addMemberToOpenProject(userId: string, projectId: string): Promise<boolean>;
+  updateProject(
+    userId: string,
+    projectId: string,
+    input: { title: string; description: string; roles?: ProjectRoleInput[] }
+  ): Promise<ProjectDetails>;
   findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[] | null>;
   findPhaseTwoCandidates(userId: string, projectId: string, weights: ProjectMatchWeights): Promise<ProjectPhaseTwoCandidate[] | null>;
   rebuildSemanticIndex(input: { similarityCutoff: number; topK: number }): Promise<SemanticIndexRebuildResult>;
@@ -86,46 +92,81 @@ export class ProjectService {
     return this.repository.listProjectsForUser(userId);
   }
 
-  public async listOpenProjects(): Promise<ProjectSummary[]> {
-    return this.repository.listOpenProjects();
+  public async listOpenProjects(userId: string): Promise<ProjectSummary[]> {
+    return this.repository.listOpenProjects(userId);
   }
 
   public async getProject(userId: string, projectId: string): Promise<ProjectDetails> {
     const normalizedProjectId = projectId.trim();
-    const project = await this.repository.findProjectForUser(userId, normalizedProjectId);
-
-    if (!project) {
-      throw new NotFoundError('Project not found');
+    const memberProject = await this.repository.findProjectForUser(userId, normalizedProjectId);
+    if (memberProject) {
+      return memberProject;
     }
 
-    return project;
+    const openProject = await this.repository.findOpenProjectById(normalizedProjectId);
+    if (openProject) {
+      return openProject;
+    }
+
+    throw new NotFoundError('Project not found');
   }
 
-  public async updateProject(userId: string, projectId: string, input: { title?: unknown; description?: unknown; roles?: unknown }): Promise<{ projectId: string }> {
-    // Only project leaders can update
-    const currentProject = await this.repository.findProjectForUser(userId, projectId);
-    
+  public async joinOpenProject(userId: string, projectId: string): Promise<ProjectDetails> {
+    const normalizedProjectId = projectId.trim();
+
+    if (await this.repository.isUserMemberOfProject(userId, normalizedProjectId)) {
+      const existing = await this.repository.findProjectForUser(userId, normalizedProjectId);
+      if (existing) {
+        return existing;
+      }
+    }
+
+    const added = await this.repository.addMemberToOpenProject(userId, normalizedProjectId);
+    if (!added) {
+      throw new NotFoundError('Open project not found or not available to join');
+    }
+
+    const joined = await this.repository.findProjectForUser(userId, normalizedProjectId);
+    if (!joined) {
+      throw new NotFoundError('Project not found after join');
+    }
+
+    return joined;
+  }
+
+  public async updateProject(
+    userId: string,
+    projectId: string,
+    input: { title?: unknown; description?: unknown; roles?: unknown }
+  ): Promise<ProjectDetails> {
+    const normalizedProjectId = projectId.trim();
+    const currentProject = await this.repository.findProjectForUser(userId, normalizedProjectId);
+
     if (!currentProject) {
       throw new NotFoundError('Project not found');
     }
 
-    if (currentProject.leader.userId !== userId) {
+    const leaderId =
+      currentProject.leader?.userId ??
+      (await this.repository.findProjectLeader(normalizedProjectId));
+    if (!leaderId || leaderId !== userId) {
       throw new ForbiddenError('Only project leaders can update projects');
     }
 
     const title = typeof input.title === 'string' ? input.title.trim() : currentProject.title;
-    const description = typeof input.description === 'string' ? input.description.trim() : currentProject.description;
-    const roles = Array.isArray(input.roles) && input.roles.length > 0 
-      ? this.parseRoles(input.roles) 
-      : currentProject.roles;
+    const description =
+      typeof input.description === 'string' ? input.description.trim() : currentProject.description;
 
     if (!title) {
       throw new BadRequestError('Titulo es requerido');
     }
 
-    await this.repository.updateProject(userId, projectId, { title, description, roles });
+    let roles: ProjectRoleInput[] | undefined;
+    if (input.roles !== undefined && input.roles !== null && Array.isArray(input.roles) && input.roles.length > 0) {
+      roles = this.parseRoles(input.roles);
+    }
 
-    return { projectId };
+    return this.repository.updateProject(userId, normalizedProjectId, { title, description, roles });
   }
 
   public async updateProjectKanban(

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, X, Check, AlertCircle, Loader } from 'lucide-react';
+import { Link } from 'react-router';
+import { Bell, X, Check, AlertCircle, Loader, UserPlus, ThumbsDown } from 'lucide-react';
 import type { UserNotification } from '../lib/projectApi';
 import { notificationsApi } from '../lib/projectApi';
 
@@ -8,14 +9,17 @@ interface NotificationCenterProps {
   onClose?: () => void;
 }
 
+const ACTIONABLE_TYPES = new Set(['PROJECT_JOIN_REQUEST', 'ROLE_APPLICATION_REQUEST']);
+
 export function NotificationCenter({ open = true, onClose }: NotificationCenterProps) {
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      loadNotifications();
+      void loadNotifications();
     }
   }, [open]);
 
@@ -26,7 +30,8 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
       const response = await notificationsApi.list();
       setNotifications(response.notifications || []);
     } catch (err) {
-      setError('Error loading notifications');
+      setError('Error al cargar las notificaciones');
+      // eslint-disable-next-line no-console
       console.error(err);
     } finally {
       setLoading(false);
@@ -36,13 +41,29 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       await notificationsApi.markAsRead(notificationId);
-      setNotifications(
-        notifications.map((n) =>
-          n.notificationId === notificationId ? { ...n, read: true } : n
-        )
+      setNotifications((prev) =>
+        prev.map((n) => (n.notificationId === notificationId ? { ...n, read: true } : n))
       );
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('Error marking notification as read:', err);
+    }
+  };
+
+  const handleRespond = async (notificationId: string, decision: 'approved' | 'rejected') => {
+    setRespondingId(notificationId);
+    try {
+      setNotifications((prev) => prev.filter((n) => n.notificationId !== notificationId));
+      await notificationsApi.respond(notificationId, decision);
+      await loadNotifications();
+      window.dispatchEvent(new CustomEvent('teammatch:membership-changed'));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Error responding to notification:', err);
+      await loadNotifications();
+      alert('No se pudo procesar la solicitud. ¿Sigues siendo el líder del proyecto?');
+    } finally {
+      setRespondingId(null);
     }
   };
 
@@ -62,13 +83,20 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
       case 'TASK_IN_REVIEW':
       case 'task-review':
         return <AlertCircle className="w-4 h-4" />;
+      case 'PROJECT_JOIN_REQUEST':
+      case 'ROLE_APPLICATION_REQUEST':
+        return <UserPlus className="w-4 h-4" />;
+      case 'PROJECT_JOIN_APPROVED':
+      case 'ROLE_APPLICATION_APPROVED':
       case 'TASK_APPROVED':
       case 'task-approved':
       case 'task-completed':
         return <Check className="w-4 h-4" />;
+      case 'PROJECT_JOIN_REJECTED':
+      case 'ROLE_APPLICATION_REJECTED':
       case 'TASK_RETURNED':
       case 'task-rejected':
-        return <AlertCircle className="w-4 h-4" />;
+        return <ThumbsDown className="w-4 h-4" />;
       default:
         return <Bell className="w-4 h-4" />;
     }
@@ -77,13 +105,20 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
   const getNotificationColor = (type: string, read: boolean) => {
     if (read) return 'bg-gray-50';
     switch (type) {
+      case 'PROJECT_JOIN_REQUEST':
+      case 'ROLE_APPLICATION_REQUEST':
+        return 'bg-amber-50';
       case 'TASK_IN_REVIEW':
       case 'task-review':
         return 'bg-blue-50';
+      case 'PROJECT_JOIN_APPROVED':
+      case 'ROLE_APPLICATION_APPROVED':
       case 'TASK_APPROVED':
       case 'task-approved':
       case 'task-completed':
         return 'bg-green-50';
+      case 'PROJECT_JOIN_REJECTED':
+      case 'ROLE_APPLICATION_REJECTED':
       case 'TASK_RETURNED':
       case 'task-rejected':
         return 'bg-red-50';
@@ -95,13 +130,20 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
   const getNotificationBorder = (type: string, read: boolean) => {
     if (read) return 'border-gray-200';
     switch (type) {
+      case 'PROJECT_JOIN_REQUEST':
+      case 'ROLE_APPLICATION_REQUEST':
+        return 'border-amber-200 border-l-4 border-l-amber-500';
       case 'TASK_IN_REVIEW':
       case 'task-review':
         return 'border-blue-200 border-l-4 border-l-blue-500';
+      case 'PROJECT_JOIN_APPROVED':
+      case 'ROLE_APPLICATION_APPROVED':
       case 'TASK_APPROVED':
       case 'task-approved':
       case 'task-completed':
         return 'border-green-200 border-l-4 border-l-green-500';
+      case 'PROJECT_JOIN_REJECTED':
+      case 'ROLE_APPLICATION_REJECTED':
       case 'TASK_RETURNED':
       case 'task-rejected':
         return 'border-red-200 border-l-4 border-l-red-500';
@@ -110,18 +152,96 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
     }
   };
 
+  const renderNotificationCard = (notif: UserNotification) => {
+    const isActionable = notif.actionable && ACTIONABLE_TYPES.has(notif.type);
+    const isResponding = respondingId === notif.notificationId;
+
+    return (
+      <div
+        key={notif.notificationId}
+        className={`mx-2 p-3 rounded-lg border ${getNotificationColor(notif.type, notif.read)} ${getNotificationBorder(notif.type, notif.read)}`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 mt-0.5 text-blue-600">
+            {getNotificationIcon(notif.type)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900">{notif.message}</p>
+            {notif.applicantDisplayName && isActionable && (
+              <p className="text-xs text-gray-600 mt-1">
+                Candidato: {notif.applicantDisplayName}
+                {notif.roleName ? ` · Rol: ${notif.roleName}` : ''}
+              </p>
+            )}
+            <p className="text-xs text-gray-500 mt-1">
+              {notif.createdAt
+                ? new Date(notif.createdAt).toLocaleDateString('es-ES', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Sin fecha'}
+            </p>
+            {notif.projectId && (
+              <Link
+                to={`/projects/${notif.projectId}`}
+                className="text-xs text-primary hover:underline mt-1 inline-block"
+              >
+                Ver proyecto
+              </Link>
+            )}
+            {isActionable && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button
+                  type="button"
+                  disabled={isResponding}
+                  onClick={() => void handleRespond(notif.notificationId, 'approved')}
+                  className="inline-flex items-center gap-1 rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  <Check className="w-3 h-3" />
+                  Aprobar
+                </button>
+                <button
+                  type="button"
+                  disabled={isResponding}
+                  onClick={() => void handleRespond(notif.notificationId, 'rejected')}
+                  className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  <ThumbsDown className="w-3 h-3" />
+                  Rechazar
+                </button>
+              </div>
+            )}
+          </div>
+          {!isActionable && !notif.read && (
+            <button
+              type="button"
+              onClick={() => void handleMarkAsRead(notif.notificationId)}
+              className="flex-shrink-0 p-1 hover:bg-white rounded transition"
+              title="Marcar como leída"
+            >
+              <Check className="w-4 h-4 text-blue-600" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-white sticky top-0">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Notificaciones</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Alertas</h2>
           {unreadCount > 0 && (
             <p className="text-sm text-gray-600">{unreadCount} sin leer</p>
           )}
         </div>
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
             className="p-1 hover:bg-gray-100 rounded-lg transition"
           >
@@ -130,7 +250,6 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
         )}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading && (
           <div className="flex items-center justify-center py-12">
@@ -151,90 +270,24 @@ export function NotificationCenter({ open = true, onClose }: NotificationCenterP
           </div>
         )}
 
-        {/* Unread notifications */}
         {groupedNotifications.unread && groupedNotifications.unread.length > 0 && (
           <div className="px-2 py-3">
             <h3 className="px-2 py-1 text-xs font-semibold text-gray-600 uppercase tracking-wide">
               Nuevas
             </h3>
-            <div className="space-y-2">
-              {groupedNotifications.unread.map((notif) => (
-                <div
-                  key={notif.notificationId}
-                  className={`mx-2 p-3 rounded-lg border ${getNotificationColor(notif.type, notif.read)} ${getNotificationBorder(notif.type, notif.read)} transition cursor-pointer hover:shadow-sm`}
-                  onClick={() => handleMarkAsRead(notif.notificationId)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 mt-0.5 text-blue-600">
-                      {getNotificationIcon(notif.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">
-                        {notif.message}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {notif.createdAt
-                          ? new Date(notif.createdAt).toLocaleDateString('es-ES', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
-                          : 'Sin fecha'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMarkAsRead(notif.notificationId);
-                      }}
-                      className="flex-shrink-0 p-1 hover:bg-white rounded transition"
-                    >
-                      <Check className="w-4 h-4 text-blue-600" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-2 mt-2">
+              {groupedNotifications.unread.map(renderNotificationCard)}
             </div>
           </div>
         )}
 
-        {/* Read notifications */}
         {groupedNotifications.read && groupedNotifications.read.length > 0 && (
           <div className="px-2 py-3 border-t border-gray-100">
             <h3 className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Anteriores
             </h3>
-            <div className="space-y-1 mt-2">
-              {groupedNotifications.read.map((notif) => (
-                <div
-                  key={notif.notificationId}
-                  className="mx-2 p-3 rounded-lg border border-gray-100 bg-gray-50 opacity-60"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 mt-0.5 text-gray-400">
-                      {getNotificationIcon(notif.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-600">
-                        {notif.message}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {notif.createdAt
-                          ? new Date(notif.createdAt).toLocaleDateString('es-ES', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
-                          : 'Sin fecha'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-2 mt-2">
+              {groupedNotifications.read.map(renderNotificationCard)}
             </div>
           </div>
         )}

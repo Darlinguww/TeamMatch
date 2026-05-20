@@ -37,6 +37,60 @@ export class Neo4jTeamRepository implements TeamRepositoryContract {
     }
   }
 
+  public async listProjectMemberships(projectId: string): Promise<Array<{ userId: string; rol: string }>> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (u:Usuario)-[membership:PERTENECE_A]->(project:Proyecto)
+         WHERE project.projectId = $projectId OR project.proyectoId = $projectId
+         RETURN u.userId AS userId,
+                coalesce(membership.rol, membership.role, 'miembro') AS rol`,
+        { projectId: projectId.trim() }
+      );
+
+      return result.records.map((record) => ({
+        userId: String(record.get('userId')),
+        rol: String(record.get('rol') ?? 'miembro')
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async getRoleVacancies(
+    projectId: string
+  ): Promise<Array<{ roleName: string; headcount: number; filled: number; available: number }>> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (p:Proyecto)-[:TIENE_ROL]->(role:Rol)
+         WHERE p.projectId = $projectId OR p.proyectoId = $projectId
+         OPTIONAL MATCH (member:Usuario)-[m:PERTENECE_A]->(p)
+         WHERE toLower(coalesce(m.rol, m.role, '')) = toLower(role.name)
+         RETURN role.name AS roleName,
+                coalesce(role.headcount, 1) AS headcount,
+                count(DISTINCT member) AS filled`,
+        { projectId: projectId.trim() }
+      );
+
+      return result.records.map((record) => {
+        const headcount = Number(record.get('headcount') ?? 1);
+        const filled = Number(record.get('filled') ?? 0);
+        const available = Math.max(0, headcount - filled);
+        return {
+          roleName: String(record.get('roleName')),
+          headcount,
+          filled,
+          available
+        };
+      });
+    } finally {
+      await session.close();
+    }
+  }
+
   public async findProjectMemberships(projectId: string, userIds: string[]): Promise<Array<{ userId: string; rol: string }>> {
     const session = driver.session();
 

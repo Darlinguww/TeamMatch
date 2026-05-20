@@ -40,7 +40,7 @@ class FakeProjectRepository implements ProjectRepository {
     return null;
   }
 
-  public async listOpenProjects(): Promise<ProjectSummary[]> {
+  public async listOpenProjects(_userId: string): Promise<ProjectSummary[]> {
     return [];
   }
 

@@ -19,9 +19,22 @@ export interface TeamMembersResult {
 export interface TeamRepository {
   isProjectLeader(userId: string, projectId: string): Promise<boolean>;
   findMissingUserIds(userIds: string[]): Promise<string[]>;
+  listProjectMemberships(projectId: string): Promise<Array<{ userId: string; rol: string }>>;
+  getRoleVacancies(
+    projectId: string
+  ): Promise<Array<{ roleName: string; headcount: number; filled: number; available: number }>>;
   findProjectMemberships(projectId: string, userIds: string[]): Promise<Array<{ userId: string; rol: string }>>;
   addMembers(projectId: string, members: TeamMemberInput[]): Promise<string[]>;
   removeMembers(projectId: string, userIds: string[]): Promise<string[]>;
+}
+
+function normalizeRoleName(role: string): string {
+  return role.replace(/\s*#\d+\s*$/i, '').trim().toLowerCase();
+}
+
+function isLeaderRole(role: string): boolean {
+  const key = normalizeRoleName(role);
+  return key === 'lider' || key === 'leader' || key === 'líder';
 }
 
 export class TeamService {
@@ -54,7 +67,7 @@ export class TeamService {
       }
 
       const leaderRemovals = memberships
-        .filter((membership) => membership.rol === 'lider')
+        .filter((membership) => isLeaderRole(membership.rol))
         .map((membership) => membership.userId);
 
       if (leaderRemovals.length > 0) {
@@ -62,7 +75,8 @@ export class TeamService {
       }
     }
 
-    const added = patch.add.length > 0 ? await this.repository.addMembers(projectId, patch.add) : [];
+    const membersToAdd = await this.validateAndFilterAdds(projectId, patch.add);
+    const added = membersToAdd.length > 0 ? await this.repository.addMembers(projectId, membersToAdd) : [];
     const removed = patch.remove.length > 0 ? await this.repository.removeMembers(projectId, patch.remove) : [];
 
     return { projectId, added, removed };
@@ -90,5 +104,60 @@ export class TeamService {
     }
 
     return { add, remove };
+  }
+
+  private async validateAndFilterAdds(
+    projectId: string,
+    requested: TeamMemberInput[]
+  ): Promise<TeamMemberInput[]> {
+    if (requested.length === 0) {
+      return [];
+    }
+
+    const existing = await this.repository.listProjectMemberships(projectId);
+    const existingIds = new Set(existing.map((member) => member.userId));
+    const pending = requested.filter((member) => !existingIds.has(member.userId));
+
+    if (pending.length === 0) {
+      return [];
+    }
+
+    const vacancies = await this.repository.getRoleVacancies(projectId);
+    const availableByRole = new Map(
+      vacancies.map((vacancy) => [normalizeRoleName(vacancy.roleName), vacancy.available])
+    );
+    const totalAvailable = vacancies.reduce((sum, vacancy) => sum + vacancy.available, 0);
+
+    if (totalAvailable <= 0) {
+      throw new BadRequestError('No hay vacantes disponibles en el proyecto');
+    }
+
+    if (pending.length > totalAvailable) {
+      throw new BadRequestError(
+        `Solo hay ${totalAvailable} vacante(s) disponible(s); no se pueden agregar ${pending.length} miembros nuevos`
+      );
+    }
+
+    const accepted: TeamMemberInput[] = [];
+
+    for (const member of pending) {
+      const roleKey = normalizeRoleName(member.rol);
+      if (isLeaderRole(member.rol)) {
+        throw new BadRequestError('No se puede asignar un miembro con rol de lider mediante matchmaking');
+      }
+
+      const available = availableByRole.get(roleKey) ?? 0;
+      if (available <= 0) {
+        throw new BadRequestError(`No hay vacantes disponibles para el rol: ${member.rol}`);
+      }
+
+      availableByRole.set(roleKey, available - 1);
+      accepted.push({
+        userId: member.userId,
+        rol: member.rol.replace(/\s*#\d+\s*$/i, '').trim() || member.rol
+      });
+    }
+
+    return accepted;
   }
 }

@@ -684,12 +684,32 @@ export function Projects() {
   useEffect(() => {
     if (!isApiModeEnabled()) return;
 
+    setAllProjects([]);
     let cancelled = false;
     (async () => {
       try {
-        const { projects } = await projectsApi.list();
+        const [{ projects: memberProjects }, { projects: openProjects }] = await Promise.all([
+          projectsApi.list(),
+          projectsApi.listOpenProjects(),
+        ]);
         if (cancelled) return;
-        setAllProjects(projects.map((apiProject) => mapApiProjectToUi(apiProject)));
+
+        const byId = new Map<string, Project>();
+        for (const apiProject of memberProjects) {
+          const ui = mapApiProjectToUi(apiProject);
+          const isLeader = apiProject.leader?.userId === user?.id;
+          byId.set(ui.id, {
+            ...ui,
+            status: ui.status === 'open' && isLeader ? 'in-progress' : ui.status,
+          });
+        }
+        for (const apiProject of openProjects) {
+          const ui = mapApiProjectToUi(apiProject, { status: 'open' });
+          if (!byId.has(ui.id)) {
+            byId.set(ui.id, ui);
+          }
+        }
+        setAllProjects([...byId.values()]);
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to load API projects', error);
@@ -699,7 +719,7 @@ export function Projects() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.id]);
 
   const filtered = allProjects.filter(p => {
     const q = searchTerm.toLowerCase();
@@ -727,10 +747,26 @@ export function Projects() {
   const reloadProjectsFromApi = async () => {
     if (!isApiModeEnabled()) return;
     try {
-      const { projects } = await projectsApi.list();
-      setAllProjects(
-        projects.map((apiProject) => mapApiProjectToUi(apiProject))
-      );
+      const [{ projects: memberProjects }, { projects: openProjects }] = await Promise.all([
+        projectsApi.list(),
+        projectsApi.listOpenProjects(),
+      ]);
+      const byId = new Map<string, Project>();
+      for (const apiProject of memberProjects) {
+        const ui = mapApiProjectToUi(apiProject);
+        const isLeader = apiProject.leader?.userId === user?.id;
+        byId.set(ui.id, {
+          ...ui,
+          status: ui.status === 'open' && isLeader ? 'in-progress' : ui.status,
+        });
+      }
+      for (const apiProject of openProjects) {
+        const ui = mapApiProjectToUi(apiProject, { status: 'open' });
+        if (!byId.has(ui.id)) {
+          byId.set(ui.id, ui);
+        }
+      }
+      setAllProjects([...byId.values()]);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to reload projects', error);
@@ -742,6 +778,19 @@ export function Projects() {
     setShowCreate(false);
     void reloadProjectsFromApi();
   };
+
+  useEffect(() => {
+    if (!isApiModeEnabled()) return;
+    const onProjectsChanged = () => {
+      void reloadProjectsFromApi();
+    };
+    window.addEventListener('teammatch:membership-changed', onProjectsChanged);
+    window.addEventListener('teammatch:project-updated', onProjectsChanged);
+    return () => {
+      window.removeEventListener('teammatch:membership-changed', onProjectsChanged);
+      window.removeEventListener('teammatch:project-updated', onProjectsChanged);
+    };
+  }, [user?.id]);
 
   return (
     <div className="space-y-6">

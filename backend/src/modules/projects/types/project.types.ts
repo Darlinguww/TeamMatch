@@ -20,6 +20,7 @@ export interface ProjectSummary {
     email: string | null;
   };
   roles: ProjectRoleInput[];
+  memberCount: number;
 }
 
 export interface ProjectKanbanState {

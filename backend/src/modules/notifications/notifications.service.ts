@@ -8,6 +8,11 @@ export interface UserNotification {
   createdAt: string;
   taskId?: string;
   projectId?: string;
+  requestId?: string;
+  applicantUserId?: string;
+  applicantDisplayName?: string;
+  roleName?: string | null;
+  actionable?: boolean;
 }
 
 export class NotificationsService {
@@ -18,14 +23,30 @@ export class NotificationsService {
       const result = await session.run(
         `MATCH (user:Usuario {userId: $userId})-[:RECIBE]->(notification:Notificacion)
          OPTIONAL MATCH (notification)-[:SOBRE_TAREA]->(task:Tarea)
-         OPTIONAL MATCH (task)-[:TIENE_TAREA|CONTIENE]-(project:Proyecto)
+         OPTIONAL MATCH (notification)-[:SOBRE_SOLICITUD]->(request:SolicitudParticipacion)
+         OPTIONAL MATCH (task)-[:TIENE_TAREA|CONTIENE]-(taskProject:Proyecto)
+         OPTIONAL MATCH (request)-[:PARA_PROYECTO]->(requestProject:Proyecto)
+         WHERE coalesce(notification.actionable, false) = false
+            OR request IS NULL
+            OR request.status = 'pending'
          RETURN notification.notificationId AS notificationId,
                 notification.type AS type,
                 notification.message AS message,
                 coalesce(notification.read, false) AS read,
                 notification.createdAt AS createdAt,
                 coalesce(task.taskId, task.tareaId, task.id) AS taskId,
-                coalesce(project.projectId, project.proyectoId) AS projectId
+                coalesce(
+                  notification.projectId,
+                  taskProject.projectId,
+                  taskProject.proyectoId,
+                  requestProject.projectId,
+                  requestProject.proyectoId
+                ) AS projectId,
+                coalesce(notification.requestId, request.requestId) AS requestId,
+                coalesce(notification.applicantUserId, request.applicantUserId) AS applicantUserId,
+                coalesce(notification.applicantDisplayName) AS applicantDisplayName,
+                coalesce(notification.roleName, request.roleName) AS roleName,
+                coalesce(notification.actionable, false) AS actionable
          ORDER BY notification.createdAt DESC
          LIMIT 50`,
         { userId }
@@ -39,6 +60,13 @@ export class NotificationsService {
         createdAt: String(record.get('createdAt')),
         taskId: record.get('taskId') ? String(record.get('taskId')) : undefined,
         projectId: record.get('projectId') ? String(record.get('projectId')) : undefined,
+        requestId: record.get('requestId') ? String(record.get('requestId')) : undefined,
+        applicantUserId: record.get('applicantUserId') ? String(record.get('applicantUserId')) : undefined,
+        applicantDisplayName: record.get('applicantDisplayName')
+          ? String(record.get('applicantDisplayName'))
+          : undefined,
+        roleName: record.get('roleName') != null ? String(record.get('roleName')) : undefined,
+        actionable: record.get('actionable') === true,
       }));
     } finally {
       await session.close();
@@ -51,8 +79,7 @@ export class NotificationsService {
     try {
       await session.run(
         `MATCH (user:Usuario {userId: $userId})-[:RECIBE]->(notification:Notificacion {notificationId: $notificationId})
-         SET notification.read = true
-         RETURN count(notification)`,
+         SET notification.read = true`,
         { userId, notificationId }
       );
     } finally {

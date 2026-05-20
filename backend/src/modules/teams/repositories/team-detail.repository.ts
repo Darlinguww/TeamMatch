@@ -44,7 +44,8 @@ export class TeamDetailRepository {
                ELSE {
                  userId: member.userId,
                  user: member.user,
-                 joinedAt: coalesce(membership.joinedAt, membership.createdAt)
+                 joinedAt: coalesce(membership.joinedAt, membership.createdAt),
+                 rol: coalesce(membership.rol, membership.role, 'miembro')
                }
              END
            ) WHERE item IS NOT NULL] AS members
@@ -61,7 +62,8 @@ export class TeamDetailRepository {
                ELSE {
                  roleId: role.roleId,
                  name: role.name,
-                 skills: skills
+                 skills: skills,
+                 headcount: coalesce(role.headcount, 1)
                }
              END
            ) WHERE item IS NOT NULL] AS roles

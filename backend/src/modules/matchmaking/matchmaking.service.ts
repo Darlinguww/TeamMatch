@@ -46,9 +46,10 @@ export class MatchmakingService {
       : context.candidates.filter((candidate) => (
         !context.teamMembers.some((member) => member.userId === candidate.userId)
       ));
-    const matches: MatchmakingResult[] = sortMatchmakingResults(candidates.map((candidate) => (
+    const scored = candidates.map((candidate) => (
       scoreMatchmakingCandidate(candidate, context.roles, context.teamMembers, options)
-    )));
+    ));
+    const matches = this.dedupeResultsByUser(sortMatchmakingResults(scored));
 
     return {
       projectId: context.projectId,
@@ -56,5 +57,18 @@ export class MatchmakingService {
       roles: context.roles,
       matches
     };
+  }
+
+  private dedupeResultsByUser(results: MatchmakingResult[]): MatchmakingResult[] {
+    const byUser = new Map<string, MatchmakingResult>();
+
+    for (const result of results) {
+      const existing = byUser.get(result.userId);
+      if (!existing || result.score > existing.score) {
+        byUser.set(result.userId, result);
+      }
+    }
+
+    return sortMatchmakingResults([...byUser.values()]);
   }
 }

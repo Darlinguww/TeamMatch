@@ -108,11 +108,17 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     try {
       const result = await session.run(
         `MATCH (:Usuario {userId: $userId})-[:PERTENECE_A]->(p:Proyecto)
-         OPTIONAL MATCH (p)<-[leaderRel:PERTENECE_A {rol: 'lider'}]-(leader:Usuario)
+         OPTIONAL MATCH (p)<-[leaderRel:PERTENECE_A]-(leader:Usuario)
+         WHERE coalesce(leaderRel.rol, leaderRel.role) = 'lider'
+            OR coalesce(leaderRel.isLeader, false) = true
+            OR toLower(coalesce(leaderRel.role, leaderRel.rol, '')) IN ['leader', 'lider', 'líder']
+         WITH p, head(collect(DISTINCT leader)) AS leader
+         OPTIONAL MATCH (member:Usuario)-[:PERTENECE_A]->(p)
+         WITH p, leader, count(DISTINCT member) AS memberCount
          OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
          OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
-         WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
-         WITH p, leader, collect(DISTINCT {
+         WITH p, leader, memberCount, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
+         WITH p, leader, memberCount, collect(DISTINCT {
            role: r.name,
            skills: skills,
            headcount: coalesce(r.headcount, 1)
@@ -123,6 +129,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 p.createdAt AS createdAt,
                 leader.userId AS leaderId,
                 leader.email AS leaderEmail,
+                memberCount,
                 roles
          ORDER BY p.createdAt DESC`,
         { userId }
@@ -134,17 +141,27 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     }
   }
 
-  public async listOpenProjects(): Promise<ProjectSummary[]> {
+  public async listOpenProjects(userId: string): Promise<ProjectSummary[]> {
     const session = driver.session();
 
     try {
       const result = await session.run(
-        `MATCH (p:Proyecto {status: 'open'})
-         OPTIONAL MATCH (p)<-[leaderRel:PERTENECE_A {rol: 'lider'}]-(leader:Usuario)
+        `MATCH (p:Proyecto)
+         WHERE coalesce(p.status, 'open') = 'open'
+           AND NOT EXISTS {
+             MATCH (:Usuario {userId: $userId})-[:PERTENECE_A]->(p)
+           }
+         OPTIONAL MATCH (p)<-[leaderRel:PERTENECE_A]-(leader:Usuario)
+         WHERE coalesce(leaderRel.rol, leaderRel.role) = 'lider'
+            OR coalesce(leaderRel.isLeader, false) = true
+            OR toLower(coalesce(leaderRel.role, leaderRel.rol, '')) IN ['leader', 'lider', 'líder']
+         WITH p, head(collect(DISTINCT leader)) AS leader
+         OPTIONAL MATCH (member:Usuario)-[:PERTENECE_A]->(p)
+         WITH p, leader, count(DISTINCT member) AS memberCount
          OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
          OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
-         WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
-         WITH p, leader, collect(DISTINCT {
+         WITH p, leader, memberCount, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
+         WITH p, leader, memberCount, collect(DISTINCT {
            role: r.name,
            skills: skills,
            headcount: coalesce(r.headcount, 1)
@@ -155,9 +172,10 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 p.createdAt AS createdAt,
                 leader.userId AS leaderId,
                 leader.email AS leaderEmail,
+                memberCount,
                 roles
          ORDER BY p.createdAt DESC`,
-        {}
+        { userId }
       );
 
       return result.records.map((record) => this.mapProjectSummary(record));
@@ -166,53 +184,150 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     }
   }
 
-  public async updateProject(userId: string, projectId: string, input: CreateProjectInput): Promise<ProjectDetails> {
+  public async findOpenProjectById(projectId: string): Promise<ProjectDetails | null> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (p:Proyecto)
+         WHERE (p.projectId = $projectId OR p.proyectoId = $projectId)
+           AND coalesce(p.status, 'open') = 'open'
+         OPTIONAL MATCH (p)<-[leaderRel:PERTENECE_A]-(leader:Usuario)
+         WHERE coalesce(leaderRel.rol, leaderRel.role) = 'lider'
+            OR coalesce(leaderRel.isLeader, false) = true
+         WITH p, leader
+         ORDER BY leader.userId
+         WITH p, head(collect(leader)) AS leader
+         OPTIONAL MATCH (member:Usuario)-[:PERTENECE_A]->(p)
+         WITH p, leader, count(DISTINCT member) AS memberCount
+         OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
+         OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
+         WITH p, leader, memberCount, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
+         WITH p, leader, memberCount, collect(DISTINCT {
+           role: r.name,
+           skills: skills,
+           headcount: coalesce(r.headcount, 1)
+         }) AS roles
+         RETURN coalesce(p.projectId, p.proyectoId) AS projectId,
+                p.title AS title,
+                p.description AS description,
+                p.summary AS summary,
+                p.createdAt AS createdAt,
+                leader.userId AS leaderId,
+                leader.email AS leaderEmail,
+                coalesce(p.kanbanSprintActive, false) AS kanbanSprintActive,
+                coalesce(p.kanbanCurrentSprint, 1) AS kanbanCurrentSprint,
+                memberCount,
+                roles
+         LIMIT 1`,
+        { projectId }
+      );
+
+      if (!result.records[0]) {
+        return null;
+      }
+
+      return this.mapProjectDetails(result.records[0]);
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async addMemberToOpenProject(userId: string, projectId: string): Promise<boolean> {
+    const session = driver.session();
+    const joinedAt = new Date().toISOString();
+
+    try {
+      const result = await session.run(
+        `MATCH (project:Proyecto)
+         WHERE (project.projectId = $projectId OR project.proyectoId = $projectId)
+           AND coalesce(project.status, 'open') = 'open'
+         MATCH (user:Usuario {userId: $userId})
+         MERGE (user)-[membership:PERTENECE_A]->(project)
+         ON CREATE SET membership.rol = 'miembro',
+                       membership.role = 'miembro',
+                       membership.isLeader = false,
+                       membership.createdAt = $joinedAt
+         ON MATCH SET membership.rol = coalesce(membership.rol, 'miembro'),
+                      membership.role = coalesce(membership.role, 'miembro')
+         RETURN coalesce(project.projectId, project.proyectoId) AS projectId
+         LIMIT 1`,
+        { userId, projectId, joinedAt }
+      );
+
+      return result.records.length > 0;
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async updateProject(
+    userId: string,
+    projectId: string,
+    input: { title: string; description: string; roles?: ProjectRoleInput[] }
+  ): Promise<ProjectDetails> {
     const session = driver.session();
     const updatedAt = new Date().toISOString();
     const summary = input.description.slice(0, 160) + (input.description.length > 160 ? '...' : '');
 
     try {
-      await session.run(
-        `MATCH (project:Proyecto {projectId: $projectId})
+      const updateResult = await session.run(
+        `MATCH (project:Proyecto)
+         WHERE project.projectId = $projectId OR project.proyectoId = $projectId
          SET project.title = $title,
+             project.nombre = $title,
              project.description = $description,
+             project.descripcion = $description,
              project.summary = $summary,
              project.updatedAt = $updatedAt
-         WITH project
-         OPTIONAL MATCH (project)-[oldRoleRel:TIENE_ROL]->(oldRole:Rol)
-         DELETE oldRoleRel
-         WITH project
-         UNWIND $roles AS roleInput
-         CREATE (role:Rol {
-           roleId: randomUUID(),
-           name: roleInput.role,
-           headcount: coalesce(roleInput.headcount, 1)
-         })
-         MERGE (project)-[:TIENE_ROL]->(role)
-         WITH role, roleInput
-         UNWIND roleInput.skills AS skillName
-         MERGE (skill:Habilidad {normalizedName: toLower(trim(skillName))})
-         ON CREATE SET skill.name = trim(skillName),
-                       skill.createdAt = datetime(),
-                       skill.es_tecnica = true
-         ON MATCH SET skill.name = coalesce(skill.name, trim(skillName)),
-                      skill.updatedAt = datetime()
-         MERGE (role)-[:REQUIERE]->(skill)`,
+         RETURN coalesce(project.projectId, project.proyectoId) AS projectKey`,
         {
           projectId,
           title: input.title,
           description: input.description,
           summary,
           updatedAt,
-          roles: input.roles.map((r) => ({
-            role: r.role,
-            skills: r.skills,
-            headcount: Math.max(1, Math.min(20, r.headcount ?? 1)),
-          })),
         }
       );
 
-      // Now fetch and return the updated project
+      if (!updateResult.records[0]) {
+        throw new NotFoundError('Project not found');
+      }
+
+      if (input.roles && input.roles.length > 0) {
+        await session.run(
+          `MATCH (project:Proyecto)
+           WHERE project.projectId = $projectId OR project.proyectoId = $projectId
+           OPTIONAL MATCH (project)-[oldRoleRel:TIENE_ROL]->(oldRole:Rol)
+           DETACH DELETE oldRole
+           WITH project
+           UNWIND $roles AS roleInput
+           CREATE (role:Rol {
+             roleId: randomUUID(),
+             name: roleInput.role,
+             headcount: coalesce(roleInput.headcount, 1)
+           })
+           MERGE (project)-[:TIENE_ROL]->(role)
+           WITH role, roleInput
+           UNWIND roleInput.skills AS skillName
+           MERGE (skill:Habilidad {normalizedName: toLower(trim(skillName))})
+           ON CREATE SET skill.name = trim(skillName),
+                         skill.createdAt = datetime(),
+                         skill.es_tecnica = true
+           ON MATCH SET skill.name = coalesce(skill.name, trim(skillName)),
+                        skill.updatedAt = datetime()
+           MERGE (role)-[:REQUIERE]->(skill)`,
+          {
+            projectId,
+            roles: input.roles.map((r) => ({
+              role: r.role,
+              skills: r.skills,
+              headcount: Math.max(1, Math.min(20, r.headcount ?? 1)),
+            })),
+          }
+        );
+      }
+
       const result = await this.findProjectForUser(userId, projectId);
       if (!result) {
         throw new NotFoundError('Project not found after update');
@@ -237,10 +352,12 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
          WITH p, leader
          ORDER BY leader.userId
          WITH p, head(collect(leader)) AS leader
+         OPTIONAL MATCH (member:Usuario)-[:PERTENECE_A]->(p)
+         WITH p, leader, count(DISTINCT member) AS memberCount
          OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
          OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
-         WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
-         WITH p, leader, collect(DISTINCT {
+         WITH p, leader, memberCount, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
+         WITH p, leader, memberCount, collect(DISTINCT {
            role: r.name,
            skills: skills,
            headcount: coalesce(r.headcount, 1)
@@ -254,6 +371,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 leader.email AS leaderEmail,
                 coalesce(p.kanbanSprintActive, false) AS kanbanSprintActive,
                 coalesce(p.kanbanCurrentSprint, 1) AS kanbanCurrentSprint,
+                memberCount,
                 roles
          LIMIT 1`,
         { userId, projectId }
@@ -458,7 +576,13 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     const session = driver.session();
     try {
       const result = await session.run(
-        `MATCH (leader:Usuario)-[rel:PERTENECE_A {rol: 'lider'}]->(p:Proyecto {projectId: $projectId})
+        `MATCH (leader:Usuario)-[rel:PERTENECE_A]->(p:Proyecto)
+         WHERE (p.projectId = $projectId OR p.proyectoId = $projectId)
+           AND (
+             coalesce(rel.rol, rel.role) = 'lider'
+             OR coalesce(rel.isLeader, false) = true
+             OR toLower(coalesce(rel.role, rel.rol, '')) IN ['leader', 'lider', 'líder']
+           )
          RETURN leader.userId AS leaderId
          LIMIT 1`,
         { projectId }
@@ -499,7 +623,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     const session = driver.session();
     try {
       const result = await session.run(
-        `MATCH (:Usuario {userId: $userId})-[rel:PERTENECE_A]->(p:Proyecto {projectId: $projectId}) RETURN count(rel) AS c`,
+        `MATCH (:Usuario {userId: $userId})-[rel:PERTENECE_A]->(p:Proyecto)
+         WHERE p.projectId = $projectId OR p.proyectoId = $projectId
+         RETURN count(rel) AS c`,
         { userId, projectId }
       );
       const count = result.records[0]?.get('c');
@@ -672,6 +798,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
   }
 
   private mapProjectSummary(record: { get(key: string): unknown }): ProjectSummary {
+    const memberCount = Number(record.get('memberCount') ?? 0);
     return {
       id: String(record.get('projectId')),
       title: String(record.get('title')),
@@ -681,7 +808,8 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
         userId: record.get('leaderId') ? String(record.get('leaderId')) : null,
         email: record.get('leaderEmail') ? String(record.get('leaderEmail')) : null
       },
-      roles: this.mapRoles(record.get('roles'))
+      roles: this.mapRoles(record.get('roles')),
+      memberCount: Number.isFinite(memberCount) && memberCount > 0 ? memberCount : 1
     };
   }
 

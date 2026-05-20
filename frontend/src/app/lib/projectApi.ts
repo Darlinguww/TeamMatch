@@ -55,6 +55,7 @@ export interface ApiProjectDetails {
   leader: { userId: string | null; email: string | null } | null;
   roles: ApiProjectRole[];
   kanban?: ApiProjectKanbanState;
+  memberCount?: number;
 }
 
 export interface ApiTask {
@@ -72,6 +73,7 @@ export interface ApiTeamMember {
   userId: string;
   user: string;
   joinedAt: string | null;
+  rol?: string | null;
 }
 
 export interface ApiTeamComposition {
@@ -141,7 +143,9 @@ export function mapApiProjectToUi(api: ApiProjectDetails, fallback?: Project): P
         roles.reduce((sum, r) => sum + (r.headcount ?? 1), 0) + 1,
         3
       ),
-    currentTeamSize: fallback?.currentTeamSize ?? 1,
+    currentTeamSize:
+      fallback?.currentTeamSize ??
+      (typeof api.memberCount === 'number' && api.memberCount > 0 ? api.memberCount : 1),
     startDate: fallback?.startDate ?? api.createdAt.split('T')[0],
     estimatedDuration: fallback?.estimatedDuration ?? 4,
     category: fallback?.category ?? 'Web Platform',
@@ -217,7 +221,35 @@ export const projectsApi = {
     );
     return { projects: projects.map(normalizeApiProject) };
   },
-  listOpenProjects: () => resourceRequest<{ projects: ApiProjectDetails[] }>('/projects/open'),
+  listOpenProjects: async () => {
+    const { projects } = await resourceRequest<{ projects: Array<ApiProjectDetails & { projectId?: string }> }>(
+      '/projects/open'
+    );
+    return { projects: projects.map(normalizeApiProject) };
+  },
+  getParticipationStatus: (projectId: string) =>
+    resourceRequest<{
+      isMember: boolean;
+      pendingJoin: boolean;
+      pendingRoles: string[];
+      projectId?: string;
+    }>(`/projects/${encodeURIComponent(projectId.trim())}/participation-status`),
+  requestJoin: (projectId: string, message?: string) =>
+    resourceRequest<{
+      request: ParticipationRequestPayload;
+      message?: string;
+    }>(`/projects/${encodeURIComponent(projectId.trim())}/join-requests`, {
+      method: 'POST',
+      body: JSON.stringify({ message: message ?? null }),
+    }),
+  applyToRole: (projectId: string, roleName: string, message?: string) =>
+    resourceRequest<{ request: ParticipationRequestPayload }>(
+      `/projects/${encodeURIComponent(projectId.trim())}/role-applications`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ roleName, message: message ?? null }),
+      }
+    ),
   create: (body: { title: string; description?: string; roles: ApiProjectRole[] }) =>
     resourceRequest<{ projectId: string; project?: ApiProjectDetails }>('/projects', {
       method: 'POST',
@@ -230,11 +262,20 @@ export const projectsApi = {
     );
     return normalizeApiProject(payload);
   },
-  update: (projectId: string, body: { title?: string; description?: string; roles?: ApiProjectRole[] }) =>
-    resourceRequest<{ projectId: string }>(`/projects/${projectId}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
+  update: async (projectId: string, body: { title?: string; description?: string; roles?: ApiProjectRole[] }) => {
+    const normalizedId = encodeURIComponent(projectId.trim());
+    const payload = await resourceRequest<{ projectId: string; project?: ApiProjectDetails & { projectId?: string } }>(
+      `/projects/${normalizedId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }
+    );
+    if (payload.project) {
+      return { projectId: payload.projectId, project: normalizeApiProject(payload.project) };
+    }
+    return { projectId: payload.projectId };
+  },
   listTasks: async (projectId: string): Promise<ApiTask[]> => {
     const normalizedId = encodeURIComponent(projectId.trim());
     const payload = await resourceRequest<ApiTask[] | { tasks?: ApiTask[] }>(
@@ -321,6 +362,18 @@ export const teamsApi = {
     }),
 };
 
+export interface ParticipationRequestPayload {
+  requestId: string;
+  kind: 'JOIN_PROJECT' | 'ROLE_APPLICATION';
+  status: 'pending' | 'approved' | 'rejected';
+  projectId: string;
+  applicantUserId: string;
+  applicantDisplayName: string;
+  roleName: string | null;
+  message: string | null;
+  createdAt: string;
+}
+
 export interface UserNotification {
   notificationId: string;
   type: string;
@@ -329,6 +382,11 @@ export interface UserNotification {
   createdAt: string;
   taskId?: string;
   projectId?: string;
+  requestId?: string;
+  applicantUserId?: string;
+  applicantDisplayName?: string;
+  roleName?: string | null;
+  actionable?: boolean;
 }
 
 export const notificationsApi = {
@@ -337,6 +395,14 @@ export const notificationsApi = {
     resourceRequest<{ message: string }>(`/api/notifications/${notificationId}/read`, {
       method: 'PATCH',
     }),
+  respond: (notificationId: string, decision: 'approved' | 'rejected') =>
+    resourceRequest<{ requestId: string; status: string }>(
+      `/api/notifications/${encodeURIComponent(notificationId)}/respond`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ decision }),
+      }
+    ),
 };
 
 export type { ProjectTaskProgress };

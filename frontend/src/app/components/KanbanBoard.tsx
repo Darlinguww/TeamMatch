@@ -13,11 +13,41 @@ interface DragItem {
   status: TaskStatus;
 }
 
-const COLUMNS: { id: TaskStatus; title: string; accent: string; headerBg: string }[] = [
-  { id: 'pending', title: 'Pendiente', accent: 'border-slate-300', headerBg: 'bg-slate-100' },
-  { id: 'in-progress', title: 'En progreso', accent: 'border-blue-300', headerBg: 'bg-blue-50' },
-  { id: 'blocked', title: 'En revisión', accent: 'border-amber-300', headerBg: 'bg-amber-50' },
-  { id: 'completed', title: 'Completada', accent: 'border-green-300', headerBg: 'bg-green-50' },
+const COLUMNS: {
+  id: TaskStatus;
+  title: string;
+  accent: string;
+  headerBg: string;
+  titleClass: string;
+}[] = [
+  {
+    id: 'pending',
+    title: 'Pendiente',
+    accent: 'border-slate-300 dark:border-slate-600',
+    headerBg: 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700',
+    titleClass: 'text-slate-800 dark:text-slate-100',
+  },
+  {
+    id: 'in-progress',
+    title: 'En progreso',
+    accent: 'border-blue-300 dark:border-blue-700',
+    headerBg: 'bg-blue-50 dark:bg-blue-950/70 border-blue-200 dark:border-blue-800',
+    titleClass: 'text-blue-900 dark:text-blue-100',
+  },
+  {
+    id: 'blocked',
+    title: 'En revisión',
+    accent: 'border-amber-300 dark:border-amber-700',
+    headerBg: 'bg-amber-50 dark:bg-amber-950/70 border-amber-200 dark:border-amber-800',
+    titleClass: 'text-amber-900 dark:text-amber-100',
+  },
+  {
+    id: 'completed',
+    title: 'Completada',
+    accent: 'border-green-300 dark:border-green-700',
+    headerBg: 'bg-green-50 dark:bg-green-950/70 border-green-200 dark:border-green-800',
+    titleClass: 'text-green-900 dark:text-green-100',
+  },
 ];
 
 const priorityStyles = {
@@ -171,8 +201,11 @@ function KanbanColumn({
     >
       <div className={cn('rounded-t-[10px] border-b px-4 py-3', column.headerBg)}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">{column.title}</h3>
-          <Badge variant="secondary" className="text-xs">
+          <h3 className={cn('text-sm font-semibold', column.titleClass)}>{column.title}</h3>
+          <Badge
+            variant="secondary"
+            className="text-xs bg-background/80 text-foreground dark:bg-background/40 dark:text-foreground"
+          >
             {tasks.length}
           </Badge>
         </div>

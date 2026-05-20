@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -92,6 +92,11 @@ export function ProjectDetails() {
   const [assigneeDirectory, setAssigneeDirectory] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isProjectMember, setIsProjectMember] = useState(true);
+  const [isJoining, setIsJoining] = useState(false);
+  const [pendingJoin, setPendingJoin] = useState(false);
+  const [pendingRoles, setPendingRoles] = useState<string[]>([]);
+  const [applyingRole, setApplyingRole] = useState<string | null>(null);
 
   const hydrateFromMock = (source: Project) => {
     setEditableProject(source);
@@ -150,7 +155,33 @@ export function ProjectDetails() {
         const apiProject = await projectsApi.get(projectId);
         if (cancelled) return;
 
-        const apiTasks = await projectsApi.listTasks(projectId);
+        let member = false;
+        try {
+          const { projects: memberships } = await projectsApi.list();
+          member = memberships.some((p) => p.id === projectId);
+        } catch {
+          member = false;
+        }
+        if (cancelled) return;
+        setIsProjectMember(member);
+
+        try {
+          const participation = await projectsApi.getParticipationStatus(projectId);
+          if (!cancelled) {
+            setPendingJoin(participation.pendingJoin);
+            setPendingRoles(participation.pendingRoles ?? []);
+            if (participation.isMember) {
+              setIsProjectMember(true);
+            }
+          }
+        } catch {
+          if (!cancelled) {
+            setPendingJoin(false);
+            setPendingRoles([]);
+          }
+        }
+
+        const apiTasks = member ? await projectsApi.listTasks(projectId) : [];
         const team = await teamsApi.getComposition(projectId).catch(() => null);
         if (cancelled) return;
 
@@ -203,7 +234,7 @@ export function ProjectDetails() {
               .map((m) => ({
                 userId: m.userId,
                 projectId,
-                role: 'Miembro',
+                role: m.rol?.trim() || 'Miembro',
                 joinedDate: m.joinedAt?.split('T')[0] ?? new Date().toISOString().split('T')[0],
                 tasksCompleted: 0,
                 totalTasks: 0,
@@ -270,6 +301,11 @@ export function ProjectDetails() {
     };
   }, [id, user?.id]);
 
+  const currentMembersForProposals = useMemo(
+    () => teamMembers.map((member) => ({ userId: member.userId, role: member.role })),
+    [teamMembers]
+  );
+
   if (isLoading && !editableProject) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-muted-foreground" role="status">
@@ -322,9 +358,79 @@ export function ProjectDetails() {
     : projectTasks;
 
   const isUserInTeam =
-    isProjectLeader || teamMembers.some((tm) => tm.userId === user?.id);
+    isProjectMember &&
+    (isProjectLeader || teamMembers.some((tm) => tm.userId === user?.id));
+
+  const handleRequestJoin = async () => {
+    const projectId = id?.trim();
+    if (!projectId || !shouldLoadProjectFromApi(projectId)) return;
+    setIsJoining(true);
+    try {
+      await projectsApi.requestJoin(projectId);
+      setPendingJoin(true);
+      alert('Solicitud enviada. El líder del proyecto la revisará en Alertas.');
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'No se pudo enviar la solicitud.';
+      alert(message);
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const handleApplyToRole = async (roleName: string) => {
+    const projectId = id?.trim();
+    if (!projectId || !shouldLoadProjectFromApi(projectId)) return;
+    setApplyingRole(roleName);
+    try {
+      await projectsApi.applyToRole(projectId, roleName);
+      setPendingRoles((prev) => [...prev, roleName]);
+      alert(`Postulación al rol "${roleName}" enviada. El líder la revisará en Alertas.`);
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'No se pudo enviar la postulación.';
+      alert(message);
+    } finally {
+      setApplyingRole(null);
+    }
+  };
   const effectiveTeamSize = (leader ? 1 : 0) + teamMembers.length;
   const spotsLeft = currentProject.teamSize - effectiveTeamSize;
+
+  const reloadTeamFromApi = async () => {
+    if (!shouldLoadProjectFromApi(currentProject.id) || !getStoredToken()) return;
+    try {
+      const team = await teamsApi.getComposition(currentProject.id);
+      setTeamMembers(
+        team.members
+          .filter((m) => m.userId !== currentProject.leaderId)
+          .map((m) => ({
+            userId: m.userId,
+            projectId: currentProject.id,
+            role: m.rol?.trim() || 'Miembro',
+            joinedDate: m.joinedAt?.split('T')[0] ?? new Date().toISOString().split('T')[0],
+            tasksCompleted: 0,
+            totalTasks: 0,
+            user: {
+              id: m.userId,
+              name: m.user,
+              email: '',
+              bio: '',
+              skills: [],
+              interests: [],
+              experience: 0,
+              availability: { hoursPerWeek: 0, preferredTimes: [] },
+              completedProjects: 0,
+              rating: 0,
+              joinedDate: m.joinedAt?.split('T')[0] ?? '',
+            },
+          }))
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to reload team after proposal', err);
+    }
+  };
 
   const handleTeamAccepted = (proposal: TeamProposal) => {
     const newMembers: TeamMemberWithUser[] = proposal.members.map((ms) => ({
@@ -336,7 +442,16 @@ export function ProjectDetails() {
       totalTasks: 0,
       user: ms.user,
     }));
-    setTeamMembers(newMembers);
+
+    setTeamMembers((prev) => {
+      const byId = new Map(prev.map((member) => [member.userId, member]));
+      for (const member of newMembers) {
+        if (!byId.has(member.userId)) {
+          byId.set(member.userId, member);
+        }
+      }
+      return [...byId.values()];
+    });
   };
 
   const canDragTask = (task: Task) => {
@@ -571,47 +686,54 @@ export function ProjectDetails() {
 
   const handleSaveProject = async () => {
     if (!editableProject) return;
-    
-    const updatedProject = {
-      name: projectForm.name.trim(),
-      description: projectForm.description.trim(),
+
+    const trimmedName = projectForm.name.trim();
+    const trimmedDescription = projectForm.description.trim();
+    if (!trimmedName) return;
+
+    const localUpdates = {
+      name: trimmedName,
+      description: trimmedDescription,
       category: projectForm.category,
       difficulty: projectForm.difficulty,
       teamSize: projectForm.teamSize,
       estimatedDuration: projectForm.estimatedDuration,
     };
 
-    // Update local state optimistically
-    setEditableProject({
-      ...editableProject,
-      ...updatedProject,
-    });
-    setEditProjectOpen(false);
-
-    // Only persist to backend if API mode enabled
-    if (!isApiModeEnabled()) return;
+    if (!shouldLoadProjectFromApi(editableProject.id)) {
+      setEditableProject({ ...editableProject, ...localUpdates });
+      setEditProjectOpen(false);
+      return;
+    }
 
     try {
-      // Convert UI form to API format for roles
-      const apiRoles = editableProject.requiredRoles.map(r => ({
-        role: r.name,
-        skills: r.requiredSkills,
-      }));
-
-      await projectsApi.update(editableProject.id, {
-        title: projectForm.name,
-        description: projectForm.description,
-        roles: apiRoles,
+      const result = await projectsApi.update(editableProject.id, {
+        title: trimmedName,
+        description: trimmedDescription,
       });
+
+      const apiProject = result.project ?? (await projectsApi.get(editableProject.id));
+      const mapped = mapApiProjectToUi(apiProject, editableProject);
+      setEditableProject({
+        ...mapped,
+        ...localUpdates,
+        name: mapped.name,
+        description: mapped.description,
+      });
+      setProjectForm({
+        name: mapped.name,
+        description: mapped.description,
+        category: projectForm.category,
+        difficulty: projectForm.difficulty,
+        teamSize: projectForm.teamSize,
+        estimatedDuration: projectForm.estimatedDuration,
+      });
+      setEditProjectOpen(false);
+      window.dispatchEvent(new CustomEvent('teammatch:project-updated'));
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to update project', err);
       alert('No se pudo guardar los cambios del proyecto. Revisa tu sesión.');
-      // Revert on error
-      setEditableProject({
-        ...editableProject,
-        ...projectForm,
-      });
     }
   };
 
@@ -659,6 +781,41 @@ export function ProjectDetails() {
           </Link>
         </Button>
       </div>
+
+      {shouldLoadProjectFromApi(currentProject.id) && !isProjectMember && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-medium">Vista previa del proyecto</p>
+              <p className="text-sm text-muted-foreground">
+                {pendingJoin
+                  ? 'Tu solicitud de ingreso está pendiente de aprobación por el líder.'
+                  : 'Solicita unirte al equipo. El líder validará tu solicitud en Alertas.'}
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={handleRequestJoin}
+              disabled={isJoining || pendingJoin}
+              variant={pendingJoin ? 'outline' : 'default'}
+            >
+              {isJoining ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando…
+                </>
+              ) : pendingJoin ? (
+                'Solicitud pendiente'
+              ) : (
+                <>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Solicitar unirme
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Project Overview */}
       <Card>
@@ -889,6 +1046,17 @@ export function ProjectDetails() {
         </TabsContent>
 
         <TabsContent value="kanban" className="space-y-4">
+          {!isProjectMember && shouldLoadProjectFromApi(currentProject.id) ? (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <p className="mb-4">El tablero Kanban solo está disponible para miembros del equipo.</p>
+                <Button type="button" onClick={handleRequestJoin} disabled={isJoining || pendingJoin}>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  {pendingJoin ? 'Solicitud pendiente' : 'Solicitar unirme'}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
           <Card>
             <CardHeader>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -992,6 +1160,7 @@ export function ProjectDetails() {
               )}
             </CardContent>
           </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="roles" className="space-y-4">
@@ -1016,8 +1185,22 @@ export function ProjectDetails() {
                           ))}
                         </div>
                       </div>
-                      {!isUserInTeam && currentProject.status === 'open' && (
-                        <Button size="sm">Postular</Button>
+                      {!isUserInTeam && !isProjectMember && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            applyingRole === role.name || pendingRoles.includes(role.name)
+                          }
+                          onClick={() => void handleApplyToRole(role.name)}
+                        >
+                          {pendingRoles.includes(role.name)
+                            ? 'Pendiente'
+                            : applyingRole === role.name
+                              ? 'Enviando…'
+                              : 'Postular'}
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -1053,7 +1236,12 @@ export function ProjectDetails() {
 
         {currentProject.leaderId === user?.id && (
           <TabsContent value="suggestions" className="space-y-4">
-            <TeamProposals project={currentProject} onTeamAccepted={handleTeamAccepted} />
+            <TeamProposals
+              project={currentProject}
+              currentMembers={currentMembersForProposals}
+              onTeamAccepted={handleTeamAccepted}
+              onTeamPersisted={reloadTeamFromApi}
+            />
           </TabsContent>
         )}
       </Tabs>

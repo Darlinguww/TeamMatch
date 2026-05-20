@@ -11,6 +11,14 @@ import { mockUsers, type User, type Project } from '../lib/mockData';
 import { useAuth } from '../lib/authContext';
 import { isApiModeEnabled, matchmakingApi, teamsApi, type ApiMatchmakingResult } from '../lib/projectApi';
 import {
+  computeOpenRoleSlots,
+  dedupeMatchmakingResults,
+  normalizeRoleLabel,
+  proposalMemberKey,
+  scoreMatchForRole,
+  type TeamMemberRef,
+} from '../lib/matchmakingProposals';
+import {
   computeMemberAffinityScore,
   computeTeamAffinity,
   scoreColor,
@@ -82,65 +90,130 @@ function matchToMemberScore(match: ApiMatchmakingResult, role: string): MemberAf
   };
 }
 
+function buildSingleProposal(
+  openSlots: ReturnType<typeof computeOpenRoleSlots>,
+  pool: ApiMatchmakingResult[],
+  seed: number
+): TeamProposal | null {
+  const usedUserIds = new Set<string>();
+  const members: MemberAffinityScore[] = [];
+
+  for (let slotIndex = 0; slotIndex < openSlots.length; slotIndex++) {
+    const slot = openSlots[slotIndex];
+    const candidates = pool.filter((match) => !usedUserIds.has(match.userId));
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const ranked = candidates
+      .map((match) => ({ match, score: scoreMatchForRole(match, slot.roleName) }))
+      .sort((a, b) => b.score - a.score || a.match.userId.localeCompare(b.match.userId));
+
+    const pick = ranked[(seed + slotIndex) % ranked.length]?.match;
+    if (!pick) {
+      return null;
+    }
+
+    usedUserIds.add(pick.userId);
+    members.push(matchToMemberScore(pick, slot.label));
+  }
+
+  if (members.length === 0) {
+    return null;
+  }
+
+  const summary = computeTeamAffinity(members);
+  return {
+    id: `api_proposal_${seed}_${proposalMemberKey(members)}`,
+    members,
+    teamAffinityScore: summary.overallScore,
+    complementarity: summary.complementarity,
+    availabilityMatch: summary.availabilityMatch,
+    experienceBalance: summary.experienceBalance,
+    teamJustification: summary.teamJustification,
+    aiJustification: `Propuesta para ${members.length} vacante(s) abierta(s). ${summary.aiJustification}`,
+  };
+}
+
 function buildProposalsFromMatches(
   project: Project,
   matches: ApiMatchmakingResult[],
-  authUserId: string
+  authUserId: string,
+  currentMembers: TeamMemberRef[]
 ): TeamProposal[] {
-  const roles = project.requiredRoles.length > 0
-    ? project.requiredRoles.flatMap((r) => {
-        const match = r.name.match(/\(×(\d+)\)\s*$/);
-        const count = match ? Number(match[1]) : 1;
-        const baseName = r.name.replace(/\s*\(×\d+\)\s*$/, '').trim();
-        return Array.from({ length: Math.max(1, count) }, (_, i) =>
-          count > 1 ? `${baseName} #${i + 1}` : baseName
-        );
-      })
-    : ['Miembro del equipo'];
+  const openSlots = computeOpenRoleSlots(project, currentMembers, project.leaderId);
+  if (openSlots.length === 0) {
+    return [];
+  }
 
-  const pool = matches.filter((m) => m.userId !== authUserId && m.userId !== project.leaderId);
-  if (pool.length === 0) return [];
+  const pool = dedupeMatchmakingResults(
+    matches.filter((m) => m.userId !== authUserId && m.userId !== project.leaderId)
+  ).filter((m) => !currentMembers.some((member) => member.userId === m.userId));
 
-  return [0, 1, 2].map((seed) => {
-    const members = roles.map((role, roleIndex) => {
-      const index = (seed * roles.length + roleIndex) % pool.length;
-      return matchToMemberScore(pool[index], role);
-    });
-    const summary = computeTeamAffinity(members);
-    return {
-      id: `api_proposal_${seed}`,
-      members,
-      teamAffinityScore: summary.overallScore,
-      complementarity: summary.complementarity,
-      availabilityMatch: summary.availabilityMatch,
-      experienceBalance: summary.experienceBalance,
-      teamJustification: summary.teamJustification,
-      aiJustification: `Propuesta generada desde el motor de matchmaking del backend (Neo4j + scoring). ${summary.aiJustification}`,
-    };
-  });
+  if (pool.length === 0) {
+    return [];
+  }
+
+  const proposals: TeamProposal[] = [];
+  const seenKeys = new Set<string>();
+
+  for (let seed = 0; seed < 3 && proposals.length < 3; seed++) {
+    const proposal = buildSingleProposal(openSlots, pool, seed);
+    if (!proposal) continue;
+    const key = proposalMemberKey(proposal.members);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    proposals.push(proposal);
+  }
+
+  return proposals;
 }
 
-function generateProposals(project: Project, authUserId: string): TeamProposal[] {
-  const roles = project.requiredRoles.length > 0
-    ? project.requiredRoles.map(r => r.name)
-    : ['Frontend Dev', 'Backend Dev', 'QA Engineer', 'Designer'].slice(0, project.teamSize - 1);
+function generateProposals(
+  project: Project,
+  authUserId: string,
+  currentMembers: TeamMemberRef[]
+): TeamProposal[] {
+  const openSlots = computeOpenRoleSlots(project, currentMembers, project.leaderId);
+  if (openSlots.length === 0) {
+    return [];
+  }
 
-  const candidates = mockUsers.filter(u => u.id !== authUserId && u.id !== project.leaderId);
+  const candidates = mockUsers.filter(
+    (u) =>
+      u.id !== authUserId &&
+      u.id !== project.leaderId &&
+      !currentMembers.some((member) => member.userId === u.id)
+  );
 
   const shuffled = (arr: User[], seed: number) =>
-    [...arr].sort((a, b) => ((parseInt(a.id) * seed) % 7) - ((parseInt(b.id) * seed) % 7));
+    [...arr].sort((a, b) => ((parseInt(a.id, 10) * seed) % 7) - ((parseInt(b.id, 10) * seed) % 7));
 
-  return [1, 2, 3].map((seed, pi) => {
-    const pool = shuffled(candidates, seed * 3 + pi);
-    const members = roles.map((role, i) => {
-      const candidate = pool[i % pool.length];
-      return computeMemberAffinityScore(candidate, project, role);
-    });
+  const proposals: TeamProposal[] = [];
+  const seenKeys = new Set<string>();
+
+  for (let seed = 0; seed < 3 && proposals.length < 3; seed++) {
+    const pool = shuffled(candidates, seed * 3 + seed);
+    const used = new Set<string>();
+    const members: MemberAffinityScore[] = [];
+
+    for (const slot of openSlots) {
+      const available = pool.filter((u) => !used.has(u.id));
+      if (available.length === 0) break;
+      const pick = available[members.length % available.length];
+      used.add(pick.id);
+      members.push(computeMemberAffinityScore(pick, project, slot.label));
+    }
+
+    if (members.length !== openSlots.length) continue;
+
+    const key = proposalMemberKey(members);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
 
     const summary = computeTeamAffinity(members);
-
-    return {
-      id: `proposal_${pi}`,
+    proposals.push({
+      id: `proposal_${seed}_${key}`,
       members,
       teamAffinityScore: summary.overallScore,
       complementarity: summary.complementarity,
@@ -148,8 +221,10 @@ function generateProposals(project: Project, authUserId: string): TeamProposal[]
       experienceBalance: summary.experienceBalance,
       teamJustification: summary.teamJustification,
       aiJustification: summary.aiJustification,
-    };
-  });
+    });
+  }
+
+  return proposals;
 }
 
 function MemberCard({ ms }: { ms: MemberAffinityScore }) {
@@ -310,10 +385,17 @@ export type { TeamProposal };
 
 interface TeamProposalsProps {
   project: Project;
+  currentMembers?: TeamMemberRef[];
   onTeamAccepted?: (proposal: TeamProposal) => void;
+  onTeamPersisted?: () => void;
 }
 
-export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
+export function TeamProposals({
+  project,
+  currentMembers = [],
+  onTeamAccepted,
+  onTeamPersisted,
+}: TeamProposalsProps) {
   const { user } = useAuth();
   const [proposals, setProposals] = useState<TeamProposal[]>([]);
   const [accepted, setAccepted] = useState<string | null>(null);
@@ -329,14 +411,24 @@ export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
     if (useApi) {
       try {
         const { matches } = await matchmakingApi.getProjectMatches(project.id, 30, 0);
-        const fromApi = buildProposalsFromMatches(project, matches, user?.id ?? '');
+        const fromApi = buildProposalsFromMatches(
+          project,
+          matches,
+          user?.id ?? '',
+          currentMembers
+        );
         if (fromApi.length > 0) {
           setProposals(fromApi);
           setLoading(false);
           return;
         }
+        const openSlots = computeOpenRoleSlots(project, currentMembers, project.leaderId);
         setProposals([]);
-        setLoadError('No hay candidatos reales con perfil suficiente en la base de datos para este proyecto.');
+        setLoadError(
+          openSlots.length === 0
+            ? 'El equipo ya está completo. No hay vacantes para nuevas recomendaciones.'
+            : 'No hay candidatos reales con perfil suficiente en la base de datos para las vacantes actuales.'
+        );
         setLoading(false);
         return;
       } catch (err) {
@@ -349,9 +441,9 @@ export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
       }
     }
 
-    setProposals(generateProposals(project, user?.id ?? ''));
+    setProposals(generateProposals(project, user?.id ?? '', currentMembers));
     setLoading(false);
-  }, [project, useApi, user?.id]);
+  }, [project, useApi, user?.id, currentMembers]);
 
   useEffect(() => {
     void loadProposals();
@@ -365,16 +457,42 @@ export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
   const handleAccept = async (proposal: TeamProposal) => {
     setSavingTeam(true);
     try {
+      const occupiedIds = new Set([
+        project.leaderId,
+        user?.id ?? '',
+        ...currentMembers.map((member) => member.userId),
+      ]);
+
+      const openSlots = computeOpenRoleSlots(project, currentMembers, project.leaderId);
+      const newMembers = proposal.members.filter((member) => !occupiedIds.has(member.user.id));
+      const limited = newMembers.slice(0, openSlots.length);
+
+      if (limited.length === 0) {
+        alert(
+          openSlots.length === 0
+            ? 'El equipo ya está completo. No se pueden agregar más miembros.'
+            : 'Los miembros sugeridos ya forman parte del proyecto.'
+        );
+        return;
+      }
+
       if (useApi) {
         await teamsApi.updateMembers(project.id, {
-          add: proposal.members.map((member) => ({
+          add: limited.map((member) => ({
             userId: member.user.id,
-            rol: member.role,
+            rol: normalizeRoleLabel(member.role),
           })),
         });
+        onTeamPersisted?.();
+        window.dispatchEvent(new CustomEvent('teammatch:membership-changed'));
       }
-      setAccepted(proposal.id);
-      onTeamAccepted?.(proposal);
+
+      const acceptedProposal: TeamProposal = {
+        ...proposal,
+        members: limited,
+      };
+      setAccepted(acceptedProposal.id);
+      onTeamAccepted?.(acceptedProposal);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to persist team proposal', err);

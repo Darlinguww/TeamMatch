@@ -34,6 +34,17 @@ export function Dashboard() {
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [projectProgress, setProjectProgress] = useState<Record<string, ProjectTaskProgress>>({});
   const [recommendedProjects, setRecommendedProjects] = useState<Project[]>([]);
+  const [membershipRefresh, setMembershipRefresh] = useState(0);
+
+  useEffect(() => {
+    const onProjectsChanged = () => setMembershipRefresh((n) => n + 1);
+    window.addEventListener('teammatch:membership-changed', onProjectsChanged);
+    window.addEventListener('teammatch:project-updated', onProjectsChanged);
+    return () => {
+      window.removeEventListener('teammatch:membership-changed', onProjectsChanged);
+      window.removeEventListener('teammatch:project-updated', onProjectsChanged);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -44,16 +55,25 @@ export function Dashboard() {
       ));
       setMyTasks(mockTasks.filter((t) => t.assignedTo === user.id));
       setRecommendedProjects(mockProjects.filter((p) => p.status === 'open').slice(0, 3));
+      setProjectProgress({});
       return;
     }
 
+    setMyProjects([]);
+    setMyTasks([]);
+    setProjectProgress({});
+    setRecommendedProjects([]);
+
     let cancelled = false;
     (async () => {
+      let memberProjectIds = new Set<string>();
+
       try {
         const { projects: apiProjects } = await projectsApi.list();
         if (!cancelled) {
           const { projects, progressByProject, myTasks: assignedTasks } =
             await loadDashboardProjectData(apiProjects, user.id);
+          memberProjectIds = new Set(projects.map((p) => p.id));
           setMyProjects(projects);
           setProjectProgress(progressByProject);
           setMyTasks(assignedTasks);
@@ -71,7 +91,11 @@ export function Dashboard() {
       try {
         const { projects } = await projectsApi.listOpenProjects();
         if (!cancelled) {
-          setRecommendedProjects(projects.map((apiProject) => mapApiProjectToUi(apiProject)).slice(0, 3));
+          const discoverable = projects
+            .map((apiProject) => mapApiProjectToUi(apiProject))
+            .filter((p) => !memberProjectIds.has(p.id))
+            .slice(0, 3);
+          setRecommendedProjects(discoverable);
         }
       } catch (error) {
         // eslint-disable-next-line no-console
@@ -83,7 +107,7 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user, location.pathname]);
+  }, [user?.id, location.pathname, membershipRefresh]);
 
   if (!user) return null;
 
@@ -383,9 +407,7 @@ export function Dashboard() {
             Proyectos Recomendados para Ti
           </CardTitle>
           <CardDescription>
-            {skillCount > 0
-              ? 'Basado en tus habilidades y experiencia'
-              : 'Completa tu perfil para recibir recomendaciones personalizadas'}
+            Proyectos abiertos de otros equipos — puedes ver detalles y unirte al equipo
           </CardDescription>
         </CardHeader>
         <CardContent>

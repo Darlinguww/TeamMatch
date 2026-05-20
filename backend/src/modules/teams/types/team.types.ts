@@ -2,12 +2,14 @@ export interface TeamMember {
   userId: string;
   user: string;
   joinedAt: string | null;
+  rol: string | null;
 }
 
 export interface TeamRole {
   roleId: string;
   name: string;
   skills: string[];
+  headcount: number;
 }
 
 export interface TeamComposition {

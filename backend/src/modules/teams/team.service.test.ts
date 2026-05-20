@@ -15,6 +15,21 @@ class FakeTeamRepository implements TeamRepository {
     return userIds.filter((userId) => !this.users.has(userId));
   }
 
+  public async listProjectMemberships(projectId: string): Promise<Array<{ userId: string; rol: string }>> {
+    const memberships = this.memberships.get(projectId) ?? new Map<string, string>();
+    return [...memberships.entries()].map(([userId, rol]) => ({ userId, rol }));
+  }
+
+  public async getRoleVacancies(
+    projectId: string
+  ): Promise<Array<{ roleName: string; headcount: number; filled: number; available: number }>> {
+    void projectId;
+    return [
+      { roleName: 'qa', headcount: 2, filled: 0, available: 2 },
+      { roleName: 'miembro', headcount: 10, filled: 1, available: 9 },
+    ];
+  }
+
   public async findProjectMemberships(projectId: string, userIds: string[]): Promise<Array<{ userId: string; rol: string }>> {
     const memberships = this.memberships.get(projectId) ?? new Map<string, string>();
     return userIds
