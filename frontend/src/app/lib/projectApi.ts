@@ -1,5 +1,6 @@
 import { ApiError, getStoredToken } from './apiClient';
 import type { Project, Task, TaskStatus } from './mockData';
+import { computeProjectTaskProgress, type ProjectTaskProgress } from './projectProgress';
 import { apiTaskStatusToUi, uiTaskStatusToApiCrud, uiTaskStatusToWorkflowPatch } from './taskStatus';
 
 export function isApiModeEnabled(): boolean {
@@ -337,5 +338,40 @@ export const notificationsApi = {
       method: 'PATCH',
     }),
 };
+
+export type { ProjectTaskProgress };
+
+/** Loads each project's tasks and derives completion % + tasks assigned to the user. */
+export async function loadDashboardProjectData(
+  apiProjects: ApiProjectDetails[],
+  userId: string
+): Promise<{
+  projects: Project[];
+  progressByProject: Record<string, ProjectTaskProgress>;
+  myTasks: Task[];
+}> {
+  const projects = apiProjects.map((apiProject) => mapApiProjectToUi(apiProject));
+  const progressByProject: Record<string, ProjectTaskProgress> = {};
+  const myTasks: Task[] = [];
+
+  await Promise.all(
+    projects.map(async (project) => {
+      try {
+        const tasks = await projectsApi.listTasks(project.id);
+        progressByProject[project.id] = computeProjectTaskProgress(tasks);
+        for (const apiTask of tasks) {
+          const uiTask = mapApiTaskToUi(apiTask, project.id);
+          if (uiTask.assignedTo === userId) {
+            myTasks.push(uiTask);
+          }
+        }
+      } catch {
+        progressByProject[project.id] = { completed: 0, total: 0, percent: 0 };
+      }
+    })
+  );
+
+  return { projects, progressByProject, myTasks };
+}
 
 export { uiTaskStatusToApiCrud, uiTaskStatusToWorkflowPatch };

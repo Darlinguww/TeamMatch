@@ -17,14 +17,22 @@ import {
   UserCircle2
 } from 'lucide-react';
 import { mockProjects, mockTeamMembers, mockTasks, type Project, type Task } from '../lib/mockData';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { useAuth } from '../lib/authContext';
-import { isApiModeEnabled, mapApiProjectToUi, projectsApi } from '../lib/projectApi';
+import {
+  isApiModeEnabled,
+  loadDashboardProjectData,
+  mapApiProjectToUi,
+  projectsApi,
+  type ProjectTaskProgress,
+} from '../lib/projectApi';
 
 export function Dashboard() {
   const { user } = useAuth();
+  const location = useLocation();
   const [myProjects, setMyProjects] = useState<Project[]>([]);
   const [myTasks, setMyTasks] = useState<Task[]>([]);
+  const [projectProgress, setProjectProgress] = useState<Record<string, ProjectTaskProgress>>({});
   const [recommendedProjects, setRecommendedProjects] = useState<Project[]>([]);
 
   useEffect(() => {
@@ -42,14 +50,22 @@ export function Dashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const { projects } = await projectsApi.list();
+        const { projects: apiProjects } = await projectsApi.list();
         if (!cancelled) {
-          setMyProjects(projects.map((apiProject) => mapApiProjectToUi(apiProject)));
+          const { projects, progressByProject, myTasks: assignedTasks } =
+            await loadDashboardProjectData(apiProjects, user.id);
+          setMyProjects(projects);
+          setProjectProgress(progressByProject);
+          setMyTasks(assignedTasks);
         }
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to load user projects', error);
-        if (!cancelled) setMyProjects([]);
+        if (!cancelled) {
+          setMyProjects([]);
+          setProjectProgress({});
+          setMyTasks([]);
+        }
       }
 
       try {
@@ -62,16 +78,12 @@ export function Dashboard() {
         console.error('Failed to load recommended projects', error);
         if (!cancelled) setRecommendedProjects([]);
       }
-
-      if (!cancelled) {
-        setMyTasks([]);
-      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, location.pathname]);
 
   if (!user) return null;
 
@@ -236,7 +248,7 @@ export function Dashboard() {
             {myTasks.filter(t => t.status !== 'completed').length > 0 ? (
               <div className="space-y-3">
                 {myTasks.filter(t => t.status !== 'completed').map((task) => {
-                  const project = mockProjects.find(p => p.id === task.projectId);
+                  const project = myProjects.find((p) => p.id === task.projectId);
                   const priorityColors = {
                     high: 'bg-red-100 text-red-700',
                     medium: 'bg-amber-100 text-amber-700',
@@ -302,11 +314,21 @@ export function Dashboard() {
             <div className="space-y-3">
               {myProjects.map((project) => {
                 const teamMember = !isApiModeEnabled()
-                  ? mockTeamMembers.find(tm => tm.userId === user.id && tm.projectId === project.id)
+                  ? mockTeamMembers.find((tm) => tm.userId === user.id && tm.projectId === project.id)
                   : null;
-                const progress = teamMember && teamMember.totalTasks > 0
-                  ? (teamMember.tasksCompleted / teamMember.totalTasks) * 100
-                  : 0;
+                const stats = isApiModeEnabled()
+                  ? projectProgress[project.id]
+                  : teamMember && teamMember.totalTasks > 0
+                    ? {
+                        completed: teamMember.tasksCompleted,
+                        total: teamMember.totalTasks,
+                        percent: (teamMember.tasksCompleted / teamMember.totalTasks) * 100,
+                      }
+                    : undefined;
+                const progress = stats?.percent ?? 0;
+                const role =
+                  teamMember?.role ??
+                  (project.leaderId === user.id ? 'Líder' : 'Miembro');
 
                 return (
                   <Link
@@ -318,7 +340,7 @@ export function Dashboard() {
                       <div>
                         <h4 className="font-medium mb-1">{project.name}</h4>
                         <Badge variant="outline" className="text-xs">
-                          {teamMember?.role}
+                          {role}
                         </Badge>
                       </div>
                       <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -326,7 +348,11 @@ export function Dashboard() {
                     <div className="space-y-2 mt-3">
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>Progreso</span>
-                        <span>{progress.toFixed(0)}%</span>
+                        <span>
+                          {stats && stats.total > 0
+                            ? `${progress.toFixed(0)}% (${stats.completed}/${stats.total})`
+                            : `${progress.toFixed(0)}%`}
+                        </span>
                       </div>
                       <Progress value={progress} />
                     </div>

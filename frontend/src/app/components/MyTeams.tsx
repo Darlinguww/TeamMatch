@@ -12,10 +12,18 @@ import {
   Target,
   Loader2,
 } from 'lucide-react';
-import { currentUser, mockProjects, mockTeamMembers, mockTasks, mockUsers, type Project } from '../lib/mockData';
-import { Link } from 'react-router';
+import {
+  currentUser,
+  mockProjects,
+  mockTeamMembers,
+  mockTasks,
+  mockUsers,
+  type Project,
+  type Task,
+} from '../lib/mockData';
+import { Link, useLocation } from 'react-router';
 import { useAuth } from '../lib/authContext';
-import { isApiModeEnabled, mapApiProjectToUi, projectsApi } from '../lib/projectApi';
+import { isApiModeEnabled, loadDashboardProjectData, projectsApi } from '../lib/projectApi';
 
 type TeamMembership = {
   role: string;
@@ -28,10 +36,12 @@ type ProjectWithMembership = Project & { membership: TeamMembership };
 
 export function MyTeams() {
   const { user } = useAuth();
+  const location = useLocation();
   const apiMode = isApiModeEnabled();
   const effectiveUser = apiMode ? user : currentUser;
 
   const [apiProjects, setApiProjects] = useState<ProjectWithMembership[]>([]);
+  const [apiMyTasks, setApiMyTasks] = useState<Task[]>([]);
   const [loadingApi, setLoadingApi] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -46,24 +56,30 @@ export function MyTeams() {
       setLoadingApi(true);
       setApiError(null);
       try {
-        const { projects } = await projectsApi.list();
+        const { projects: apiProjects } = await projectsApi.list();
         if (cancelled) return;
 
-        const mapped = projects.map((apiProject) => {
-          const project = mapApiProjectToUi(apiProject);
-          const isLeader = apiProject.leader?.userId === effectiveUser.id;
+        const { projects, progressByProject, myTasks } = await loadDashboardProjectData(
+          apiProjects,
+          effectiveUser.id
+        );
+
+        const mapped = projects.map((project) => {
+          const isLeader = project.leaderId === effectiveUser.id;
+          const stats = progressByProject[project.id] ?? { completed: 0, total: 0, percent: 0 };
           return {
             ...project,
             status: project.status === 'open' && isLeader ? 'in-progress' : project.status,
             membership: {
               role: isLeader ? 'Líder' : 'Miembro',
-              tasksCompleted: 0,
-              totalTasks: 0,
+              tasksCompleted: stats.completed,
+              totalTasks: stats.total,
             },
           } satisfies ProjectWithMembership;
         });
 
         setApiProjects(mapped);
+        setApiMyTasks(myTasks);
       } catch (error) {
         if (!cancelled) {
           setApiError(error instanceof Error ? error.message : 'No se pudieron cargar tus equipos');
@@ -77,7 +93,7 @@ export function MyTeams() {
     return () => {
       cancelled = true;
     };
-  }, [apiMode, effectiveUser?.id]);
+  }, [apiMode, effectiveUser?.id, location.pathname]);
 
   const myTeamMemberships = apiMode ? [] : mockTeamMembers.filter((tm) => tm.userId === effectiveUser?.id);
   const mockProjectsWithMembership: ProjectWithMembership[] = apiMode
@@ -143,7 +159,7 @@ export function MyTeams() {
               <Target className="h-5 w-5 text-purple-600" />
               <span className="text-2xl font-bold">
                 {apiMode
-                  ? '—'
+                  ? apiProjects.reduce((acc, p) => acc + p.membership.tasksCompleted, 0)
                   : myTeamMemberships.reduce((acc, tm) => acc + tm.tasksCompleted, 0)}
               </span>
             </div>
@@ -174,7 +190,7 @@ export function MyTeams() {
                   ? []
                   : mockTasks.filter((t) => t.projectId === project.id);
                 const myTasks = apiMode
-                  ? []
+                  ? apiMyTasks.filter((t) => t.projectId === project.id)
                   : projectTasks.filter((t) => t.assignedTo === effectiveUser?.id);
                 const pendingTasks = myTasks.filter((t) => t.status !== 'completed');
 
@@ -212,10 +228,9 @@ export function MyTeams() {
                         </Button>
                       </div>
 
-                      {!apiMode && (
-                        <div className="grid gap-4 md:grid-cols-3">
+                      <div className="grid gap-4 md:grid-cols-3">
                           <div className="p-4 rounded-lg bg-muted/50">
-                            <p className="text-sm text-muted-foreground mb-2">Mi Progreso</p>
+                            <p className="text-sm text-muted-foreground mb-2">Progreso del proyecto</p>
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-2xl font-bold">{progress.toFixed(0)}%</span>
                               <span className="text-sm text-muted-foreground">
@@ -240,28 +255,29 @@ export function MyTeams() {
                             </p>
                           </div>
 
-                          <div className="p-4 rounded-lg bg-muted/50">
-                            <p className="text-sm text-muted-foreground mb-2">Equipo</p>
-                            <div className="flex -space-x-2 mb-2">
-                              {teamMembers.slice(0, 4).map((member) => (
-                                <div
-                                  key={member.id}
-                                  className="h-8 w-8 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center"
-                                  title={member.name}
-                                >
-                                  <span className="text-xs text-primary font-medium">
-                                    {member.name
-                                      .split(' ')
-                                      .map((n) => n[0])
-                                      .join('')}
-                                  </span>
-                                </div>
-                              ))}
+                          {!apiMode && (
+                            <div className="p-4 rounded-lg bg-muted/50">
+                              <p className="text-sm text-muted-foreground mb-2">Equipo</p>
+                              <div className="flex -space-x-2 mb-2">
+                                {teamMembers.slice(0, 4).map((member) => (
+                                  <div
+                                    key={member.id}
+                                    className="h-8 w-8 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center"
+                                    title={member.name}
+                                  >
+                                    <span className="text-xs text-primary font-medium">
+                                      {member.name
+                                        .split(' ')
+                                        .map((n) => n[0])
+                                        .join('')}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{teamMembers.length} colaboradores</p>
                             </div>
-                            <p className="text-xs text-muted-foreground">{teamMembers.length} colaboradores</p>
-                          </div>
+                          )}
                         </div>
-                      )}
                     </CardContent>
                   </Card>
                 );
