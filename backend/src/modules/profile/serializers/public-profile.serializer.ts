@@ -1,0 +1,200 @@
+import {
+  AvailabilityDay,
+  ProfileSearchMatch,
+  PublicProfile,
+  PublicProfileSearchResult,
+  SKILL_CATEGORIES,
+  SkillExperience,
+  TimeSlot,
+  WEEKDAYS,
+  Weekday,
+  type SkillCategory
+} from '../types/profile.types.js';
+
+export interface PublicProfileRecord {
+  userId: unknown;
+  user: unknown;
+  experience: unknown;
+  skills?: unknown;
+  availability?: unknown;
+}
+
+export interface PublicProfileSearchRecord extends PublicProfileRecord {
+  match: unknown;
+}
+
+function isSkillCategory(value: string): value is SkillCategory {
+  return SKILL_CATEGORIES.includes(value as SkillCategory);
+}
+
+function serializeExperienceItem(item: unknown): SkillExperience | null {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+    return null;
+  }
+
+  const rawItem = item as Record<string, unknown>;
+  const skillName = typeof rawItem.skillName === 'string' ? rawItem.skillName : '';
+  const category = typeof rawItem.category === 'string' && isSkillCategory(rawItem.category)
+    ? rawItem.category
+    : 'other';
+
+  if (!skillName) {
+    return null;
+  }
+
+  return {
+    skillName,
+    category,
+    yearsOfExperience: Number(rawItem.yearsOfExperience ?? 0),
+    level: typeof rawItem.level === 'string' && rawItem.level ? rawItem.level : null
+  };
+}
+
+function isWeekday(value: string): value is Weekday {
+  return WEEKDAYS.includes(value as Weekday);
+}
+
+function serializeTimeSlot(item: unknown): TimeSlot | null {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+    return null;
+  }
+
+  const rawItem = item as Record<string, unknown>;
+
+  if (typeof rawItem.start !== 'string' || typeof rawItem.end !== 'string') {
+    return null;
+  }
+
+  return {
+    start: rawItem.start,
+    end: rawItem.end
+  };
+}
+
+function serializeAvailabilityDay(item: unknown): AvailabilityDay | null {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+    return null;
+  }
+
+  const rawItem = item as Record<string, unknown>;
+  const day = typeof rawItem.day === 'string' ? rawItem.day : '';
+
+  if (!isWeekday(day) || !Array.isArray(rawItem.timeSlots)) {
+    return null;
+  }
+
+  const timeSlots = rawItem.timeSlots
+    .map(serializeTimeSlot)
+    .filter((slot): slot is TimeSlot => slot !== null);
+
+  return { day, timeSlots };
+}
+
+export function serializePublicProfile(record: PublicProfileRecord): PublicProfile {
+  const experience = Array.isArray(record.experience)
+    ? record.experience
+      .map(serializeExperienceItem)
+      .filter((item): item is SkillExperience => item !== null)
+    : [];
+  const availability = Array.isArray(record.availability)
+    ? record.availability
+      .map(serializeAvailabilityDay)
+      .filter((item): item is AvailabilityDay => item !== null)
+    : [];
+  const skills = Array.isArray(record.skills)
+    ? record.skills.filter((skill): skill is string => typeof skill === 'string' && Boolean(skill.trim()))
+    : [];
+
+  return {
+    userId: String(record.userId),
+    user: typeof record.user === 'string' ? record.user : '',
+    experience,
+    availability,
+    skills
+  };
+}
+
+function serializeDomainWeights(domainWeights: unknown): Record<string, number> {
+  if (Array.isArray(domainWeights)) {
+    return domainWeights.reduce<Record<string, number>>((weights, item) => {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        return weights;
+      }
+
+      const rawItem = item as Record<string, unknown>;
+      const domain = typeof rawItem.domain === 'string' ? rawItem.domain : '';
+      const weight = Number(rawItem.weight ?? 0);
+
+      if (domain && Number.isFinite(weight) && weight > 0) {
+        weights[domain] = weight;
+      }
+
+      return weights;
+    }, {});
+  }
+
+  if (typeof domainWeights !== 'object' || domainWeights === null) {
+    return {};
+  }
+
+  return Object.entries(domainWeights as Record<string, unknown>).reduce<Record<string, number>>((weights, [domain, value]) => {
+    const weight = Number(value ?? 0);
+
+    if (domain && Number.isFinite(weight) && weight > 0) {
+      weights[domain] = weight;
+    }
+
+    return weights;
+  }, {});
+}
+
+function serializeMatchingCategories(matchingCategories: unknown): SkillCategory[] {
+  if (!Array.isArray(matchingCategories)) {
+    return [];
+  }
+
+  return matchingCategories.filter((category): category is SkillCategory => (
+    typeof category === 'string' && isSkillCategory(category)
+  ));
+}
+
+function serializeSearchMatch(match: unknown): ProfileSearchMatch {
+  if (typeof match !== 'object' || match === null || Array.isArray(match)) {
+    return {
+      matchingSkills: 0,
+      totalMatchingYears: 0,
+      availabilityMatched: false,
+      redundancyPenalty: 0,
+      score: 0,
+      matchingCategories: [],
+      categoryWeightApplied: 0,
+      reputationScore: 0,
+      reputationWeightApplied: 0,
+      isNeutralScore: false,
+      domainWeights: {}
+    };
+  }
+
+  const rawMatch = match as Record<string, unknown>;
+
+  return {
+    matchingSkills: Number(rawMatch.matchingSkills ?? 0),
+    totalMatchingYears: Number(rawMatch.totalMatchingYears ?? 0),
+    availabilityMatched: rawMatch.availabilityMatched === true,
+    redundancyPenalty: Number(rawMatch.redundancyPenalty ?? 0),
+    score: Number(rawMatch.score ?? 0),
+    matchingCategories: serializeMatchingCategories(rawMatch.matchingCategories),
+    categoryWeightApplied: Number(rawMatch.categoryWeightApplied ?? 0),
+    reputationScore: Number(rawMatch.reputationScore ?? 0),
+    reputationWeightApplied: Number(rawMatch.reputationWeightApplied ?? 0),
+    isNeutralScore: rawMatch.isNeutralScore === true,
+    domainWeights: serializeDomainWeights(rawMatch.domainWeights)
+  };
+}
+
+export function serializePublicProfileSearchResult(record: PublicProfileSearchRecord): PublicProfileSearchResult {
+  return {
+    ...serializePublicProfile(record),
+    match: serializeSearchMatch(record.match)
+  };
+}

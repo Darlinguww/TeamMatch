@@ -1,0 +1,59 @@
+# ─────────────────────────────────────────────
+# BUILD
+# ─────────────────────────────────────────────
+dist/
+build/
+**/dist/
+**/build/
+ 
+# ─────────────────────────────────────────────
+# NEO4J — datos locales (volúmenes Docker)
+# ─────────────────────────────────────────────
+neo4j/data/
+neo4j/logs/
+ 
+# ─────────────────────────────────────────────
+# ARCHIVOS SUBIDOS POR USUARIOS
+# ─────────────────────────────────────────────
+uploads/
+tmp/
+ 
+# ─────────────────────────────────────────────
+# LOGS
+# ─────────────────────────────────────────────
+*.log
+logs/
+ 
+# ─────────────────────────────────────────────
+# IDE
+# ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+ 
+# ─────────────────────────────────────────────
+# OS
+# ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+ 
+# ─────────────────────────────────────────────
+# TESTS
+# ─────────────────────────────────────────────
+coverage/
+
+# Archivos de entorno (Contienen contraseñas y llaves)
+.env
+*.env
+.env.local
+
+# Dependencias (No se suben porque se instalan con npm install)
+node_modules/
+dist/
+build/
+
+# Archivos de sistema y logs
+npm-debug.log*
+.DS_Store
+Thumbs.db
