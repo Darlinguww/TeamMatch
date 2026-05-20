@@ -173,12 +173,18 @@ export const matchmakingApi = {
 
 export const projectsApi = {
   list: () => resourceRequest<{ projects: ApiProjectDetails[] }>('/projects'),
+  listOpenProjects: () => resourceRequest<{ projects: ApiProjectDetails[] }>('/projects/open'),
   create: (body: { title: string; description?: string; roles: ApiProjectRole[] }) =>
     resourceRequest<{ projectId: string }>('/projects', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
   get: (projectId: string) => resourceRequest<ApiProjectDetails>(`/projects/${projectId}`),
+  update: (projectId: string, body: { title?: string; description?: string; roles?: ApiProjectRole[] }) =>
+    resourceRequest<{ projectId: string }>(`/projects/${projectId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   listTasks: (projectId: string) => resourceRequest<ApiTask[]>(`/projects/${projectId}/tasks`),
   createTask: (
     projectId: string,
@@ -221,6 +227,32 @@ export const tasksApi = {
 export const teamsApi = {
   getComposition: (projectId: string) =>
     resourceRequest<ApiTeamComposition>(`/teams/${projectId}`),
+  updateMembers: (
+    projectId: string,
+    body: { add?: Array<{ userId: string; rol: string }>; remove?: string[] }
+  ) =>
+    resourceRequest<{ projectId: string; added: string[]; removed: string[] }>(`/teams/${projectId}/members`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+};
+
+export interface UserNotification {
+  notificationId: string;
+  type: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  taskId?: string;
+  projectId?: string;
+}
+
+export const notificationsApi = {
+  list: () => resourceRequest<{ notifications: UserNotification[] }>('/api/notifications'),
+  markAsRead: (notificationId: string) =>
+    resourceRequest<{ message: string }>(`/api/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+    }),
 };
 
 export { uiTaskStatusToApiCrud, uiTaskStatusToWorkflowPatch };

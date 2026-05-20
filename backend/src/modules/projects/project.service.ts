@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { AppError } from '../../shared/errors/AppError.js';
-import { BadRequestError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import {
   CreateProjectInput,
   ProjectDetails,
@@ -26,6 +26,8 @@ export interface ProjectRepository {
   createProject(leaderId: string, projectId: string, input: CreateProjectInput): Promise<void>;
   listProjectsForUser(userId: string): Promise<ProjectSummary[]>;
   findProjectForUser(userId: string, projectId: string): Promise<ProjectDetails | null>;
+  listOpenProjects(): Promise<ProjectSummary[]>;
+  updateProject(userId: string, projectId: string, input: CreateProjectInput): Promise<ProjectDetails>;
   findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[] | null>;
   findPhaseTwoCandidates(userId: string, projectId: string, weights: ProjectMatchWeights): Promise<ProjectPhaseTwoCandidate[] | null>;
   rebuildSemanticIndex(input: { similarityCutoff: number; topK: number }): Promise<SemanticIndexRebuildResult>;
@@ -58,6 +60,10 @@ export class ProjectService {
     return this.repository.listProjectsForUser(userId);
   }
 
+  public async listOpenProjects(): Promise<ProjectSummary[]> {
+    return this.repository.listOpenProjects();
+  }
+
   public async getProject(userId: string, projectId: string): Promise<ProjectDetails> {
     const project = await this.repository.findProjectForUser(userId, projectId);
 
@@ -66,6 +72,33 @@ export class ProjectService {
     }
 
     return project;
+  }
+
+  public async updateProject(userId: string, projectId: string, input: { title?: unknown; description?: unknown; roles?: unknown }): Promise<{ projectId: string }> {
+    // Only project leaders can update
+    const currentProject = await this.repository.findProjectForUser(userId, projectId);
+    
+    if (!currentProject) {
+      throw new NotFoundError('Project not found');
+    }
+
+    if (currentProject.leader.userId !== userId) {
+      throw new ForbiddenError('Only project leaders can update projects');
+    }
+
+    const title = typeof input.title === 'string' ? input.title.trim() : currentProject.title;
+    const description = typeof input.description === 'string' ? input.description.trim() : currentProject.description;
+    const roles = Array.isArray(input.roles) && input.roles.length > 0 
+      ? this.parseRoles(input.roles) 
+      : currentProject.roles;
+
+    if (!title) {
+      throw new BadRequestError('Titulo es requerido');
+    }
+
+    await this.repository.updateProject(userId, projectId, { title, description, roles });
+
+    return { projectId };
   }
 
   public async findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[]> {

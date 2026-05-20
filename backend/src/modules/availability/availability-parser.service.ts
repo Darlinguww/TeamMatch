@@ -13,16 +13,11 @@ export class AvailabilityParserService {
         source: 'azure'
       };
     } catch {
-      await this.tryManualParseForValidation(text);
-
+      const manualAvailability = await this.manualParser.parse(text);
       return {
-        availability: [],
+        availability: manualAvailability,
         source: 'manual'
       };
     }
-  }
-
-  private async tryManualParseForValidation(text: string): Promise<void> {
-    await this.manualParser.parse(text);
   }
 }

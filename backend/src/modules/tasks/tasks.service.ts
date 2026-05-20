@@ -12,7 +12,7 @@ export class TasksService {
     const statusUpdate = await this.taskRepository.updateStatus({
       taskId,
       actorUserId,
-      status: input.status,
+      status: this.toCanonicalStatus(input.status),
       normalizedStatus: this.normalizeStatusKey(input.status),
       eventId: randomUUID(),
       notificationId: randomUUID(),
@@ -40,6 +40,7 @@ export class TasksService {
       decision: input.decision,
       comment: input.comment,
       eventId: randomUUID(),
+      notificationId: randomUUID(),
       reviewedAt: new Date().toISOString()
     });
 
@@ -53,11 +54,31 @@ export class TasksService {
 
     return {
       task: reviewResult.task,
-      review: reviewResult.review
+      review: reviewResult.review,
+      notification: reviewResult.notification
     };
   }
 
   private normalizeStatusKey(status: string): string {
-    return status.trim().toLowerCase().replace(/\s+/g, '_');
+    return status.trim().toLowerCase().replace(/\s+/g, '_').replace(/ó/g, 'o');
+  }
+
+  private toCanonicalStatus(status: string): string {
+    const normalized = this.normalizeStatusKey(status);
+
+    if (['pending', 'pendiente'].includes(normalized)) {
+      return 'pendiente';
+    }
+    if (['in_progress', 'en_progreso'].includes(normalized)) {
+      return 'en progreso';
+    }
+    if (['in_review', 'en_revision'].includes(normalized)) {
+      return 'en revision';
+    }
+    if (['completed', 'completada'].includes(normalized)) {
+      return 'completada';
+    }
+
+    return status.trim();
   }
 }

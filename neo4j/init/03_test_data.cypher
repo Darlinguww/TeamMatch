@@ -6,28 +6,28 @@ MERGE (u1:Usuario {userId: '1'})
 SET u1.email = 'maria.garcia@example.com',
     u1.user = 'Maria Garcia',
     u1.name = 'Maria Garcia',
-    u1.passwordHash = coalesce(u1.passwordHash, '$2a$10$AjK7Q1wuXw8VEDrJqOVsO./..iok/sgN61pdw/Mv/DKzy44ENh5M6'),
+    u1.passwordHash = coalesce(u1.passwordHash, '$2a$10$4OOSpI.zvLZ7LblVs6p33uH8RY9JDkq8NS77U6ZtmlZZ/5B5lvNLu'),
     u1.updatedAt = datetime();
 
 MERGE (u2:Usuario {userId: '2'})
 SET u2.email = 'carlos.r@example.com',
     u2.user = 'Carlos Rodriguez',
     u2.name = 'Carlos Rodriguez',
-    u2.passwordHash = coalesce(u2.passwordHash, '$2a$10$AjK7Q1wuXw8VEDrJqOVsO./..iok/sgN61pdw/Mv/DKzy44ENh5M6'),
+    u2.passwordHash = coalesce(u2.passwordHash, '$2a$10$4OOSpI.zvLZ7LblVs6p33uH8RY9JDkq8NS77U6ZtmlZZ/5B5lvNLu'),
     u2.updatedAt = datetime();
 
 MERGE (u3:Usuario {userId: '3'})
 SET u3.email = 'ana.m@example.com',
     u3.user = 'Ana Martinez',
     u3.name = 'Ana Martinez',
-    u3.passwordHash = coalesce(u3.passwordHash, '$2a$10$AjK7Q1wuXw8VEDrJqOVsO./..iok/sgN61pdw/Mv/DKzy44ENh5M6'),
+    u3.passwordHash = coalesce(u3.passwordHash, '$2a$10$4OOSpI.zvLZ7LblVs6p33uH8RY9JDkq8NS77U6ZtmlZZ/5B5lvNLu'),
     u3.updatedAt = datetime();
 
 MERGE (u4:Usuario {userId: '4'})
 SET u4.email = 'diego.l@example.com',
     u4.user = 'Diego Lopez',
     u4.name = 'Diego Lopez',
-    u4.passwordHash = coalesce(u4.passwordHash, '$2a$10$AjK7Q1wuXw8VEDrJqOVsO./..iok/sgN61pdw/Mv/DKzy44ENh5M6'),
+    u4.passwordHash = coalesce(u4.passwordHash, '$2a$10$4OOSpI.zvLZ7LblVs6p33uH8RY9JDkq8NS77U6ZtmlZZ/5B5lvNLu'),
     u4.updatedAt = datetime();
 
 WITH [

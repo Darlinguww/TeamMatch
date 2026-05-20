@@ -5,7 +5,6 @@ networks:
 volumes:
   neo4j_data:
   neo4j_logs:
-  neo4j_plugins:
   backend_node_modules:
 
 services:
@@ -20,24 +19,24 @@ services:
       - '7687:7687'   # Bolt protocol (driver)
     environment:
       - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
-      - NEO4J_dbms_security_procedures_unrestricted=gds.*
-      - NEO4J_dbms_memory_heap_initial__size=512m
-      - NEO4J_dbms_memory_heap_max__size=1G
-      - NEO4J_dbms_memory_pagecache_size=512m
+      # GDS queda desactivado por defecto en desarrollo para evitar arranques
+      # muy lentos o bloqueos de Neo4j en equipos con poca memoria.
+      - NEO4J_server_memory_heap_initial__size=256m
+      - NEO4J_server_memory_heap_max__size=768m
+      - NEO4J_server_memory_pagecache_size=256m
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
-      - ./neo4j/plugins:/plugins
       - ./neo4j/init:/docker-entrypoint-initdb.d
     networks:
       - teammatch-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "${NEO4J_USER}", "-p", "${NEO4J_PASSWORD}", "RETURN 1"]
-      interval: 20s
-      timeout: 15s
-      retries: 10
-      start_period: 500s
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
  
   # ─────────────────────────────────────────────
   # FRONTEND — React + Vite + TypeScript

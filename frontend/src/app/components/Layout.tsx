@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router';
-import { Home, User, Briefcase, Users, MessageSquare, Network, LogOut, Settings } from 'lucide-react';
+import { Home, User, Briefcase, Users, MessageSquare, Network, LogOut, Settings, Bell } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useSettings } from '../lib/settingsContext';
 import { cn } from './ui/utils';
@@ -20,6 +20,7 @@ export function Layout() {
     { to: '/profile', icon: User, label: 'Mi Perfil' },
     { to: '/projects', icon: Briefcase, label: 'Proyectos' },
     { to: '/my-teams', icon: Users, label: 'Mis Equipos' },
+    { to: '/notifications', icon: Bell, label: 'Alertas' },
     { to: '/feedback', icon: MessageSquare, label: 'Evaluaciones' },
     { to: '/settings', icon: Settings, label: 'Ajustes' },
   ];

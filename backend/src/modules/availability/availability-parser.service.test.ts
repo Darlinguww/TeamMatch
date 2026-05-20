@@ -58,12 +58,15 @@ describe('Availability parsing', () => {
     });
   });
 
-  it('hace fallback manual vacio cuando Azure falla', async () => {
+  it('hace fallback manual cuando Azure falla', async () => {
     const service = new AvailabilityParserService(new FailingAiParser(), new ManualAvailabilityParser());
 
     await expect(service.parse('viernes de 8 a 10')).resolves.toEqual({
       source: 'manual',
-      availability: []
+      availability: [{
+        day: 'friday',
+        timeSlots: [{ start: '08:00', end: '10:00' }]
+      }]
     });
   });
 });

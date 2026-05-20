@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -15,25 +16,67 @@ import {
   CheckCircle2,
   UserCircle2
 } from 'lucide-react';
-import { mockProjects, mockTeamMembers, mockTasks } from '../lib/mockData';
+import { mockProjects, mockTeamMembers, mockTasks, type Project, type Task } from '../lib/mockData';
 import { Link } from 'react-router';
 import { useAuth } from '../lib/authContext';
+import { isApiModeEnabled, mapApiProjectToUi, projectsApi } from '../lib/projectApi';
 
 export function Dashboard() {
   const { user } = useAuth();
+  const [myProjects, setMyProjects] = useState<Project[]>([]);
+  const [myTasks, setMyTasks] = useState<Task[]>([]);
+  const [recommendedProjects, setRecommendedProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    if (!isApiModeEnabled()) {
+      setMyProjects(mockProjects.filter((p) =>
+        mockTeamMembers.some((tm) => tm.userId === user.id && tm.projectId === p.id)
+      ));
+      setMyTasks(mockTasks.filter((t) => t.assignedTo === user.id));
+      setRecommendedProjects(mockProjects.filter((p) => p.status === 'open').slice(0, 3));
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { projects } = await projectsApi.list();
+        if (!cancelled) {
+          setMyProjects(projects.map((apiProject) => mapApiProjectToUi(apiProject)));
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load user projects', error);
+        if (!cancelled) setMyProjects([]);
+      }
+
+      try {
+        const { projects } = await projectsApi.listOpenProjects();
+        if (!cancelled) {
+          setRecommendedProjects(projects.map((apiProject) => mapApiProjectToUi(apiProject)).slice(0, 3));
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load recommended projects', error);
+        if (!cancelled) setRecommendedProjects([]);
+      }
+
+      if (!cancelled) {
+        setMyTasks([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   if (!user) return null;
 
-  const myProjects = mockProjects.filter(p =>
-    mockTeamMembers.some(tm => tm.userId === user.id && tm.projectId === p.id)
-  );
-
-  const myTasks = mockTasks.filter(t => t.assignedTo === user.id);
-  const pendingTasks = myTasks.filter(t => t.status !== 'completed').length;
-  const completedTasks = myTasks.filter(t => t.status === 'completed').length;
-
-  const openProjects = mockProjects.filter(p => p.status === 'open');
-  const recommendedProjects = openProjects.slice(0, 3);
+  const pendingTasks = myTasks.filter((t) => t.status !== 'completed').length;
+  const completedTasks = myTasks.filter((t) => t.status === 'completed').length;
 
   const advancedSkills = user.skills?.filter(
     s => s.level === 'advanced' || s.level === 'expert'
@@ -258,10 +301,10 @@ export function Dashboard() {
           <CardContent>
             <div className="space-y-3">
               {myProjects.map((project) => {
-                const teamMember = mockTeamMembers.find(tm =>
-                  tm.userId === user.id && tm.projectId === project.id
-                );
-                const progress = teamMember
+                const teamMember = !isApiModeEnabled()
+                  ? mockTeamMembers.find(tm => tm.userId === user.id && tm.projectId === project.id)
+                  : null;
+                const progress = teamMember && teamMember.totalTasks > 0
                   ? (teamMember.tasksCompleted / teamMember.totalTasks) * 100
                   : 0;
 
@@ -322,8 +365,13 @@ export function Dashboard() {
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             {recommendedProjects.map((project) => {
-              const matchScore = skillCount > 0
-                ? 75 + Math.floor(Math.random() * 20)
+              const userSkills = user.skills?.map((skill) => skill.name.toLowerCase()) ?? [];
+              const projectSkills = project.requiredSkills.map((skill) => skill.name.toLowerCase());
+              const matchedSkills = projectSkills.filter((skill) =>
+                userSkills.some((userSkill) => userSkill.includes(skill) || skill.includes(userSkill))
+              );
+              const matchScore = skillCount > 0 && projectSkills.length > 0
+                ? Math.round((matchedSkills.length / projectSkills.length) * 100)
                 : null;
 
               return (

@@ -12,16 +12,21 @@ import {
 } from 'lucide-react';
 import { currentUser, mockProjects, mockTeamMembers, mockTasks, mockUsers } from '../lib/mockData';
 import { Link } from 'react-router';
+import { useAuth } from '../lib/authContext';
+import { isApiModeEnabled } from '../lib/projectApi';
 
 export function MyTeams() {
-  const myTeamMemberships = mockTeamMembers.filter(tm => tm.userId === currentUser.id);
-  const myProjects = myTeamMemberships.map(tm => ({
-    ...mockProjects.find(p => p.id === tm.projectId)!,
+  const { user } = useAuth();
+  const apiMode = isApiModeEnabled();
+  const effectiveUser = apiMode ? user : currentUser;
+  const myTeamMemberships = apiMode ? [] : mockTeamMembers.filter((tm) => tm.userId === effectiveUser?.id);
+  const myProjects = apiMode ? [] : myTeamMemberships.map((tm) => ({
+    ...mockProjects.find((p) => p.id === tm.projectId)!,
     membership: tm,
   }));
 
-  const activeProjects = myProjects.filter(p => p.status === 'in-progress');
-  const completedProjects = myProjects.filter(p => p.status === 'completed');
+  const activeProjects = myProjects.filter((p) => p.status === 'in-progress');
+  const completedProjects = myProjects.filter((p) => p.status === 'completed');
 
   return (
     <div className="space-y-6">
@@ -227,7 +232,9 @@ export function MyTeams() {
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="font-medium mb-2">Aún no eres parte de ningún equipo</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Explora proyectos disponibles y únete a un equipo
+              {apiMode
+                ? 'Tu cuenta está conectada al backend, pero aún no hay datos de equipos disponibles en esta vista.'
+                : 'Explora proyectos disponibles y únete a un equipo'}
             </p>
             <Button asChild>
               <Link to="/projects">

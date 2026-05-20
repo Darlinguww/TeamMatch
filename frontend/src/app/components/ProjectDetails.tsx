@@ -138,7 +138,7 @@ export function ProjectDetails() {
           teamsApi.getComposition(id).catch(() => null),
         ]);
         if (cancelled) return;
-        const mapped = mapApiProjectToUi(apiProject, mock);
+        const mapped = mapApiProjectToUi(apiProject);
         setEditableProject(mapped);
         const tasks = apiTasks.map((t) => mapApiTaskToUi(t, id));
         setProjectTasks(tasks);
@@ -206,20 +206,16 @@ export function ProjectDetails() {
         setProjectForm({
           name: apiProject.title,
           description: apiProject.description || apiProject.summary,
-          category: mock?.category ?? 'Web Platform',
-          difficulty: mock?.difficulty ?? 'medium',
-          teamSize: mock?.teamSize ?? Math.max(apiProject.roles.length + 1, 3),
-          estimatedDuration: mock?.estimatedDuration ?? 4,
+          category: 'Web Platform',
+          difficulty: 'medium',
+          teamSize: Math.max(apiProject.roles.reduce((sum, role) => sum + (role.headcount ?? 1), 0) + 1, 1),
+          estimatedDuration: 4,
         });
         setLoadError(false);
       } catch (err) {
         if (!cancelled) {
-          if (mock) {
-            hydrateFromMock(mock);
-          } else {
-            setLoadError(true);
-            setEditableProject(null);
-          }
+          setLoadError(true);
+          setEditableProject(null);
           // eslint-disable-next-line no-console
           console.error('Failed to load project from API', err);
         }
@@ -496,18 +492,50 @@ export function ProjectDetails() {
     setEditProjectOpen(true);
   };
 
-  const handleSaveProject = () => {
+  const handleSaveProject = async () => {
     if (!editableProject) return;
-    setEditableProject({
-      ...editableProject,
+    
+    const updatedProject = {
       name: projectForm.name.trim(),
       description: projectForm.description.trim(),
       category: projectForm.category,
       difficulty: projectForm.difficulty,
       teamSize: projectForm.teamSize,
       estimatedDuration: projectForm.estimatedDuration,
+    };
+
+    // Update local state optimistically
+    setEditableProject({
+      ...editableProject,
+      ...updatedProject,
     });
     setEditProjectOpen(false);
+
+    // Only persist to backend if API mode enabled
+    if (!isApiModeEnabled()) return;
+
+    try {
+      // Convert UI form to API format for roles
+      const apiRoles = editableProject.requiredRoles.map(r => ({
+        role: r.name,
+        skills: r.requiredSkills,
+      }));
+
+      await projectsApi.update(editableProject.id, {
+        title: projectForm.name,
+        description: projectForm.description,
+        roles: apiRoles,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to update project', err);
+      alert('No se pudo guardar los cambios del proyecto. Revisa tu sesión.');
+      // Revert on error
+      setEditableProject({
+        ...editableProject,
+        ...projectForm,
+      });
+    }
   };
 
   const toggleSprint = () => {

@@ -61,7 +61,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
            headcount: coalesce(roleInput.headcount, 1)
          })
          MERGE (project)-[:TIENE_ROL]->(role)
-         WITH role, roleInput
+         WITH project, leader, role, roleInput
          UNWIND roleInput.skills AS skillName
          MERGE (skill:Habilidad {normalizedName: toLower(trim(skillName))})
          ON CREATE SET skill.name = trim(skillName),
@@ -70,6 +70,7 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
          ON MATCH SET skill.name = coalesce(skill.name, trim(skillName)),
                       skill.updatedAt = datetime()
          MERGE (role)-[:REQUIERE]->(skill)
+         WITH project, leader
          RETURN leader.userId AS leaderId, project.projectId AS projectId`,
         {
           leaderId,
@@ -123,6 +124,96 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
       );
 
       return result.records.map((record) => this.mapProjectSummary(record));
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async listOpenProjects(): Promise<ProjectSummary[]> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (p:Proyecto {status: 'open'})
+         OPTIONAL MATCH (p)<-[leaderRel:PERTENECE_A {rol: 'lider'}]-(leader:Usuario)
+         OPTIONAL MATCH (p)-[:TIENE_ROL]->(r:Rol)
+         OPTIONAL MATCH (r)-[:REQUIERE]->(s:Habilidad)
+         WITH p, leader, r, [name IN collect(DISTINCT s.name) WHERE name IS NOT NULL] AS skills
+         WITH p, leader, collect(DISTINCT {
+           role: r.name,
+           skills: skills,
+           headcount: coalesce(r.headcount, 1)
+         }) AS roles
+         RETURN p.projectId AS projectId,
+                p.title AS title,
+                p.summary AS summary,
+                p.createdAt AS createdAt,
+                leader.userId AS leaderId,
+                leader.email AS leaderEmail,
+                roles
+         ORDER BY p.createdAt DESC`,
+        {}
+      );
+
+      return result.records.map((record) => this.mapProjectSummary(record));
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async updateProject(userId: string, projectId: string, input: CreateProjectInput): Promise<ProjectDetails> {
+    const session = driver.session();
+    const updatedAt = new Date().toISOString();
+    const summary = input.description.slice(0, 160) + (input.description.length > 160 ? '...' : '');
+
+    try {
+      await session.run(
+        `MATCH (project:Proyecto {projectId: $projectId})
+         SET project.title = $title,
+             project.description = $description,
+             project.summary = $summary,
+             project.updatedAt = $updatedAt
+         WITH project
+         OPTIONAL MATCH (project)-[oldRoleRel:TIENE_ROL]->(oldRole:Rol)
+         DELETE oldRoleRel
+         WITH project
+         UNWIND $roles AS roleInput
+         CREATE (role:Rol {
+           roleId: randomUUID(),
+           name: roleInput.role,
+           headcount: coalesce(roleInput.headcount, 1)
+         })
+         MERGE (project)-[:TIENE_ROL]->(role)
+         WITH role, roleInput
+         UNWIND roleInput.skills AS skillName
+         MERGE (skill:Habilidad {normalizedName: toLower(trim(skillName))})
+         ON CREATE SET skill.name = trim(skillName),
+                       skill.createdAt = datetime(),
+                       skill.es_tecnica = true
+         ON MATCH SET skill.name = coalesce(skill.name, trim(skillName)),
+                      skill.updatedAt = datetime()
+         MERGE (role)-[:REQUIERE]->(skill)`,
+        {
+          projectId,
+          title: input.title,
+          description: input.description,
+          summary,
+          updatedAt,
+          roles: input.roles.map((r) => ({
+            role: r.role,
+            skills: r.skills,
+            headcount: Math.max(1, Math.min(20, r.headcount ?? 1)),
+          })),
+        }
+      );
+
+      // Now fetch and return the updated project
+      const result = await this.findProjectForUser(userId, projectId);
+      if (!result) {
+        throw new NotFoundError('Project not found after update');
+      }
+
+      return result;
     } finally {
       await session.close();
     }

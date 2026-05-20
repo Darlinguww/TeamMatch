@@ -72,4 +72,5 @@ export interface UpdateTaskStatusResult {
 export interface ReviewTaskResult {
   task: TaskSummary;
   review: TaskReviewSummary;
+  notification?: TaskNotificationSummary | null;
 }

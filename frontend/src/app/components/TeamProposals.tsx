@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { mockUsers, type User, type Project } from '../lib/mockData';
 import { useAuth } from '../lib/authContext';
-import { isApiModeEnabled, matchmakingApi, type ApiMatchmakingResult } from '../lib/projectApi';
+import { isApiModeEnabled, matchmakingApi, teamsApi, type ApiMatchmakingResult } from '../lib/projectApi';
 import {
   computeMemberAffinityScore,
   computeTeamAffinity,
@@ -318,6 +318,7 @@ export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
   const [proposals, setProposals] = useState<TeamProposal[]>([]);
   const [accepted, setAccepted] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savingTeam, setSavingTeam] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const useApi = isApiModeEnabled();
 
@@ -334,11 +335,17 @@ export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
           setLoading(false);
           return;
         }
-        setLoadError('No hay candidatos con perfil en la base de datos; mostrando propuestas de demostración.');
+        setProposals([]);
+        setLoadError('No hay candidatos reales con perfil suficiente en la base de datos para este proyecto.');
+        setLoading(false);
+        return;
       } catch (err) {
+        setProposals([]);
         setLoadError(
-          `${err instanceof Error ? err.message : 'Error de matchmaking'} — usando propuestas de demostración.`
+          err instanceof Error ? err.message : 'Error de matchmaking'
         );
+        setLoading(false);
+        return;
       }
     }
 
@@ -355,9 +362,26 @@ export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
     await loadProposals();
   };
 
-  const handleAccept = (proposal: TeamProposal) => {
-    setAccepted(proposal.id);
-    onTeamAccepted?.(proposal);
+  const handleAccept = async (proposal: TeamProposal) => {
+    setSavingTeam(true);
+    try {
+      if (useApi) {
+        await teamsApi.updateMembers(project.id, {
+          add: proposal.members.map((member) => ({
+            userId: member.user.id,
+            rol: member.role,
+          })),
+        });
+      }
+      setAccepted(proposal.id);
+      onTeamAccepted?.(proposal);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to persist team proposal', err);
+      alert('No se pudo guardar el equipo en la base de datos. Revisa permisos y vuelve a intentar.');
+    } finally {
+      setSavingTeam(false);
+    }
   };
 
   return (
@@ -418,7 +442,7 @@ export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
             </div>
           ))}
         </div>
-      ) : (
+      ) : proposals.length > 0 ? (
         <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
           {proposals.map((p, i) => (
             <ProposalCard
@@ -426,9 +450,13 @@ export function TeamProposals({ project, onTeamAccepted }: TeamProposalsProps) {
               proposal={p}
               index={i}
               onAccept={() => handleAccept(p)}
-              disabled={!!accepted}
+              disabled={!!accepted || savingTeam}
             />
           ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+          No hay propuestas reales disponibles todavía.
         </div>
       )}
     </div>

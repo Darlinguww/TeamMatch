@@ -28,6 +28,7 @@ export interface ReviewTaskInput {
   decision: TaskReviewDecision;
   comment: string | null;
   eventId: string;
+  notificationId: string;
   reviewedAt: string;
 }
 
@@ -132,7 +133,7 @@ export class TaskWorkflowRepository {
            CREATE (notification:Notificacion {
              notificationId: $notificationId,
              type: 'TASK_IN_REVIEW',
-             message: 'Task is ready for review',
+             message: 'Una tarea fue enviada a revision',
              read: false,
              taskId: coalesce(task.taskId, task.tareaId, task.id, elementId(task)),
              projectId: coalesce(project.projectId, project.proyectoId),
@@ -153,7 +154,7 @@ export class TaskWorkflowRepository {
                   WHEN notificationsCreated > 0 THEN {
                     notificationId: $notificationId,
                     type: 'TASK_IN_REVIEW',
-                    message: 'Task is ready for review',
+                    message: 'Una tarea fue enviada a revision',
                     createdAt: $occurredAt,
                     read: false,
                     recipientUserId: leader.userId
@@ -218,6 +219,12 @@ export class TaskWorkflowRepository {
               previousStatus,
               leader IS NOT NULL AND leader.userId = $actorUserId AS actorIsLeader
          CALL {
+           WITH task
+           OPTIONAL MATCH (task)<-[:ASIGNADO_A]-(assignedOut:Usuario)
+           OPTIONAL MATCH (task)-[:ASIGNADO_A]->(assignedIn:Usuario)
+           RETURN coalesce(assignedOut, assignedIn) AS assigned
+         }
+         CALL {
            WITH task, actorIsLeader
            WITH task, actorIsLeader
            WHERE actorIsLeader
@@ -248,6 +255,26 @@ export class TaskWorkflowRepository {
            CREATE (actor)-[:REALIZO]->(event)
            RETURN count(event) AS reviewEventsCreated
          }
+         CALL {
+           WITH project, task, assigned, actorIsLeader
+           WITH project, task, assigned, actorIsLeader
+           WHERE actorIsLeader AND assigned IS NOT NULL AND assigned.userId <> $actorUserId
+           CREATE (notification:Notificacion {
+             notificationId: $notificationId,
+             type: CASE WHEN $decision = 'approved' THEN 'TASK_APPROVED' ELSE 'TASK_RETURNED' END,
+             message: CASE
+               WHEN $decision = 'approved' THEN 'Tu tarea fue revisada y movida a Completada'
+               ELSE 'Tu tarea fue revisada y devuelta a En progreso'
+             END,
+             read: false,
+             taskId: coalesce(task.taskId, task.tareaId, task.id, elementId(task)),
+             projectId: coalesce(project.projectId, project.proyectoId),
+             createdAt: $reviewedAt
+           })
+           CREATE (assigned)-[:RECIBE]->(notification)
+           CREATE (notification)-[:SOBRE_TAREA]->(task)
+           RETURN count(notification) AS reviewNotificationsCreated
+         }
          RETURN coalesce(task.taskId, task.tareaId, task.id, elementId(task)) AS taskId,
                 coalesce(task.title, task.titulo, task.name, task.nombre, '') AS title,
                 CASE WHEN actorIsLeader THEN $nextStatus ELSE coalesce(task.status, task.estado, '') END AS status,
@@ -264,7 +291,21 @@ export class TaskWorkflowRepository {
                     reviewedBy: $actorUserId
                   }
                   ELSE null
-                END AS review
+                END AS review,
+                CASE
+                  WHEN reviewNotificationsCreated > 0 THEN {
+                    notificationId: $notificationId,
+                    type: CASE WHEN $decision = 'approved' THEN 'TASK_APPROVED' ELSE 'TASK_RETURNED' END,
+                    message: CASE
+                      WHEN $decision = 'approved' THEN 'Tu tarea fue revisada y movida a Completada'
+                      ELSE 'Tu tarea fue revisada y devuelta a En progreso'
+                    END,
+                    createdAt: $reviewedAt,
+                    read: false,
+                    recipientUserId: assigned.userId
+                  }
+                  ELSE null
+                END AS notification
          LIMIT 1`,
         {
           taskId: input.taskId,
@@ -273,6 +314,7 @@ export class TaskWorkflowRepository {
           comment: input.comment,
           nextStatus,
           eventId: input.eventId,
+          notificationId: input.notificationId,
           reviewedAt: input.reviewedAt
         }
       );
@@ -284,10 +326,12 @@ export class TaskWorkflowRepository {
       const record = result.records[0];
       const task = this.serializeTaskFromRecord(record);
       const review = serializeTaskReview(record.get('review'));
+      const notification = serializeTaskNotification(record.get('notification'));
 
       return {
         task,
         review: review as TaskReviewSummary,
+        notification,
         actorIsLeader: record.get('actorIsLeader') === true
       };
     } finally {

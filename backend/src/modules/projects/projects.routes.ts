@@ -22,9 +22,19 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
   res.status(200).json({ projects });
 }));
 
+router.get('/open', requireAuth, asyncHandler(async (_req, res) => {
+  const projects = await projectService.listOpenProjects();
+  res.status(200).json({ projects });
+}));
+
 router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
   const project = await projectService.getProject(req.user!.userId, req.params.id);
   res.status(200).json(project);
+}));
+
+router.put('/:id', requireAuth, asyncHandler(async (req, res) => {
+  const result = await projectService.updateProject(req.user!.userId, req.params.id, req.body ?? {});
+  res.status(200).json(result);
 }));
 
 router.get('/:id/match/phase1', requireAuth, asyncHandler(async (req, res) => {

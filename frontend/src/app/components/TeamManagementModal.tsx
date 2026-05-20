@@ -45,6 +45,7 @@ import {
   AiJustification,
 } from './AffinityScore';
 import { scoreColor, scoreBarColor } from '../lib/affinityScore';
+import { isApiModeEnabled, teamsApi } from '../lib/projectApi';
 
 export type TeamMemberWithUser = TeamMember & { user: User };
 
@@ -159,6 +160,8 @@ export function TeamManagementModal({
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [removeTarget, setRemoveTarget] = useState<TeamMemberWithUser | null>(null);
+  const [saving, setSaving] = useState(false);
+  const apiMode = isApiModeEnabled();
 
   const roleOptions =
     project.requiredRoles.length > 0
@@ -183,7 +186,9 @@ export function TeamManagementModal({
     ...members.map((m) => m.userId),
   ]);
 
-  const availableCandidates = mockUsers.filter((u) => !occupiedIds.has(u.id));
+  const availableCandidates = apiMode
+    ? []
+    : mockUsers.filter((u) => !occupiedIds.has(u.id));
 
   const previewAffinity = useMemo(() => {
     if (!selectedUserId || !selectedRole) return null;
@@ -194,7 +199,7 @@ export function TeamManagementModal({
 
   const spotsLeft = project.teamSize - 1 - members.length;
 
-  const handleAddMember = () => {
+  const handleAddMember = async () => {
     if (!selectedUserId || !selectedRole || spotsLeft <= 0) return;
     const user = mockUsers.find((u) => u.id === selectedUserId);
     if (!user) return;
@@ -209,15 +214,43 @@ export function TeamManagementModal({
       user,
     };
 
-    onMembersChange([...members, newMember]);
-    setSelectedUserId('');
-    setSelectedRole('');
+    setSaving(true);
+    try {
+      if (apiMode) {
+        await teamsApi.updateMembers(project.id, {
+          add: [{ userId: user.id, rol: selectedRole }],
+        });
+      }
+      onMembersChange([...members, newMember]);
+      setSelectedUserId('');
+      setSelectedRole('');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to add team member', err);
+      alert('No se pudo agregar el miembro al equipo.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const confirmRemove = () => {
+  const confirmRemove = async () => {
     if (!removeTarget) return;
-    onMembersChange(members.filter((m) => m.userId !== removeTarget.userId));
-    setRemoveTarget(null);
+    setSaving(true);
+    try {
+      if (apiMode) {
+        await teamsApi.updateMembers(project.id, {
+          remove: [removeTarget.userId],
+        });
+      }
+      onMembersChange(members.filter((m) => m.userId !== removeTarget.userId));
+      setRemoveTarget(null);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to remove team member', err);
+      alert('No se pudo quitar el miembro del equipo.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const teamMetrics = [
@@ -348,6 +381,12 @@ export function TeamManagementModal({
                 )}
               </p>
 
+              {apiMode && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  En modo API no se muestran usuarios de demostraciÃ³n. Agrega miembros aceptando propuestas reales desde Matchmaking.
+                </div>
+              )}
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-xs text-muted-foreground">
@@ -356,7 +395,7 @@ export function TeamManagementModal({
                   <Select
                     value={selectedUserId}
                     onValueChange={setSelectedUserId}
-                    disabled={spotsLeft <= 0 || availableCandidates.length === 0}
+                    disabled={apiMode || spotsLeft <= 0 || availableCandidates.length === 0}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar usuario" />
@@ -375,7 +414,7 @@ export function TeamManagementModal({
                   <Select
                     value={selectedRole}
                     onValueChange={setSelectedRole}
-                    disabled={spotsLeft <= 0}
+                    disabled={apiMode || spotsLeft <= 0}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar rol" />
@@ -414,7 +453,9 @@ export function TeamManagementModal({
                 disabled={
                   !selectedUserId ||
                   !selectedRole ||
-                  spotsLeft <= 0
+                  apiMode ||
+                  spotsLeft <= 0 ||
+                  saving
                 }
                 onClick={handleAddMember}
               >
@@ -448,6 +489,7 @@ export function TeamManagementModal({
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmRemove}
+              disabled={saving}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Quitar miembro

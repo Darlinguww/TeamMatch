@@ -221,7 +221,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    await new Promise(r => setTimeout(r, 800));
     const found = registeredUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (!found)              return { success: false, error: 'No existe una cuenta con ese correo electrónico.' };
     if (found.password !== password) return { success: false, error: 'Contraseña incorrecta.' };
@@ -256,7 +255,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    await new Promise(r => setTimeout(r, 800));
     if (registeredUsers.find(u => u.email.toLowerCase() === data.email.toLowerCase()))
       return { success: false, error: 'Ya existe una cuenta con ese correo electrónico.' };
     if (data.password.length < 8)     return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
@@ -297,8 +295,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     else if (typeof data.avatar === 'string') saveAvatar(user.id, data.avatar);
     if (USE_API_AUTH) {
       await syncProfileToApi(data);
-    } else {
-      await new Promise((r) => setTimeout(r, 400));
     }
     persistUser(updated);
     syncRegisteredUser(updated);
@@ -312,8 +308,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     else if (typeof data.avatar === 'string') saveAvatar(user.id, data.avatar);
     if (USE_API_AUTH) {
       await syncProfileToApi(data);
-    } else {
-      await new Promise((r) => setTimeout(r, 400));
     }
     persistUser(updated);
     syncRegisteredUser(updated);

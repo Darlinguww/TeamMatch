@@ -2,6 +2,11 @@ import { apiRequest, ApiError } from './apiClient';
 import { mapApiCategory, type SuggestedSkillPayload } from './skillCatalog';
 import type { Skill } from './mockData';
 
+export interface ApiAvailabilityDay {
+  day: string;
+  timeSlots: Array<{ start: string; end: string }>;
+}
+
 export const profileApi = {
   getProfile: (userId: string) =>
     apiRequest<{ profile: { userId: string; user: string; skills: string[]; experience: Array<{
@@ -22,6 +27,18 @@ export const profileApi = {
     apiRequest<{ profile: unknown }>('/profile/experience', {
       method: 'PUT',
       body: { experience },
+    }),
+
+  updateAvailability: (availability: ApiAvailabilityDay[]) =>
+    apiRequest<{ profile: unknown }>('/profile/availability', {
+      method: 'PUT',
+      body: { availability },
+    }),
+
+  parseAvailability: (text: string) =>
+    apiRequest<{ availability: ApiAvailabilityDay[]; source: 'azure' | 'manual' }>('/availability/parse', {
+      method: 'POST',
+      body: { text },
     }),
 
   suggestSkillsFromText: (text: string) =>

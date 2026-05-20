@@ -54,6 +54,10 @@ export function Profile() {
   const [skillText,       setSkillText]       = useState("");
   const [newSkill,        setNewSkill]        = useState<Partial<Skill>>({ name: "", category: "technical", level: "beginner" });
   const [availabilityTimeInput, setAvailabilityTimeInput] = useState("");
+  const [availabilityParseInput, setAvailabilityParseInput] = useState("");
+  const [parsedAvailability, setParsedAvailability] = useState<Array<{ day: string; timeSlots: Array<{ start: string; end: string }> }> | null>(null);
+  const [isParsingAvailability, setIsParsingAvailability] = useState(false);
+  const [availabilityParseError, setAvailabilityParseError] = useState<string | null>(null);
   const [aiSkillError, setAiSkillError] = useState<string | null>(null);
 
   const normalizeSkillName = (name: string) => name.trim().toLowerCase();
@@ -109,6 +113,44 @@ export function Profile() {
       };
     });
     setAvailabilityTimeInput('');
+  };
+
+  const handleParseAvailabilityText = async () => {
+    if (!isApiModeEnabled()) {
+      setAvailabilityParseError('El análisis de disponibilidad requiere modo API habilitado.');
+      return;
+    }
+
+    if (!availabilityParseInput.trim()) {
+      setAvailabilityParseError('Ingresa una descripción de tu disponibilidad para analizarla.');
+      return;
+    }
+
+    setAvailabilityParseError(null);
+    setIsParsingAvailability(true);
+    setParsedAvailability(null);
+
+    try {
+      const result = await profileApi.parseAvailability(availabilityParseInput.trim());
+      setParsedAvailability(result.availability);
+
+      if (result.availability.length > 0) {
+        const formatted = result.availability.map((day) =>
+          `${day.day} ${day.timeSlots.map((slot) => `${slot.start}-${slot.end}`).join(', ')}`
+        );
+        setLocal((p) => p ? {
+          ...p,
+          availability: {
+            ...p.availability,
+            preferredTimes: Array.from(new Set([...p.availability.preferredTimes, ...formatted])),
+          }
+        } : p);
+      }
+    } catch (error) {
+      setAvailabilityParseError(error instanceof Error ? error.message : 'No se pudo analizar la disponibilidad');
+    } finally {
+      setIsParsingAvailability(false);
+    }
   };
 
   const handleRemovePreferredTime = (time: string) => {
@@ -561,6 +603,42 @@ export function Profile() {
                       ))
                     ) : (
                       <p className="text-sm text-muted-foreground italic">Agrega tus franjas horarias preferidas.</p>
+                    )}
+                  </div>
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-sm font-semibold">Analiza tu disponibilidad</p>
+                        <p className="text-xs text-muted-foreground">Escribe tu disponibilidad en lenguaje natural y genera franjas horarias automáticamente.</p>
+                      </div>
+                      <Button size="sm" onClick={handleParseAvailabilityText} disabled={isParsingAvailability}>
+                        {isParsingAvailability ? 'Analizando...' : 'Analizar texto'}
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={availabilityParseInput}
+                      onChange={(e) => setAvailabilityParseInput(e.target.value)}
+                      placeholder="Ej: Lunes de 9 a 11 y miércoles de 18 a 20"
+                      rows={3}
+                    />
+                    {availabilityParseError && (
+                      <div className="mt-3 flex items-center gap-2 text-sm text-destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        {availabilityParseError}
+                      </div>
+                    )}
+                    {parsedAvailability && parsedAvailability.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        <p className="text-xs font-semibold text-slate-700">Resultados detectados:</p>
+                        <div className="space-y-1 text-sm text-slate-700">
+                          {parsedAvailability.map((entry) => (
+                            <div key={entry.day} className="rounded-lg bg-white border border-slate-200 p-2">
+                              <p className="font-medium">{entry.day}</p>
+                              <p>{entry.timeSlots.map((slot) => `${slot.start}-${slot.end}`).join(', ')}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">Estos horarios ayudan a encontrar proyectos que se adapten a tu carga semanal.</p>

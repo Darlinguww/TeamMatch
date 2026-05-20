@@ -109,7 +109,16 @@ function CreateProjectModal({ open, onClose, onCreated }: {
   const [skillInput, setSkillInput] = useState('');
   const [roleSkillInputs, setRoleSkillInputs] = useState<Record<string,string>>({});
 
-  const set = (patch: Partial<NewProjectForm>) => setForm(prev => ({ ...prev, ...patch }));
+  const getTeamSizeFromRoles = (roles: RoleEntry[]) =>
+    Math.min(20, Math.max(1, 1 + roles.reduce((sum, role) => sum + Math.max(1, role.headcount ?? 1), 0)));
+
+  const set = (patch: Partial<NewProjectForm>) => setForm(prev => {
+    const next = { ...prev, ...patch };
+    if (patch.roles) {
+      next.teamSize = getTeamSizeFromRoles(patch.roles);
+    }
+    return next;
+  });
   const useApiAuth = import.meta.env.VITE_USE_API_AUTH === 'true';
 
   const addRole = (name: string) => {
@@ -190,12 +199,8 @@ function CreateProjectModal({ open, onClose, onCreated }: {
         onCreated(localProject);
       } else {
         const created = await projectsApi.create(payload);
-        try {
-          const projectData = await projectsApi.get(created.projectId);
-          onCreated(mapApiProjectToUi(projectData, localProject));
-        } catch {
-          onCreated({ ...localProject, id: created.projectId });
-        }
+        const projectData = await projectsApi.get(created.projectId);
+        onCreated(mapApiProjectToUi(projectData));
       }
 
       setStep(0);
@@ -317,10 +322,15 @@ function CreateProjectModal({ open, onClose, onCreated }: {
           <div className="space-y-5">
             <div className="space-y-2">
               <Label>Tamaño del equipo: <span className="font-semibold text-primary">{form.teamSize} personas</span></Label>
-              <input type="range" min={1} max={20} value={form.teamSize}
-                onChange={e => set({ teamSize: Number(e.target.value) })}
-                className="w-full accent-primary" />
-              <div className="flex justify-between text-xs text-muted-foreground"><span>1</span><span>20</span></div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${Math.min(100, (form.teamSize / 20) * 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Se calcula automáticamente: tú como líder + las vacantes de los roles.
+              </p>
             </div>
 
             <div className="space-y-3">
@@ -660,10 +670,7 @@ export function Projects() {
       try {
         const { projects } = await projectsApi.list();
         if (cancelled) return;
-        setAllProjects(projects.map((apiProject) => {
-          const fallback = mockProjects.find((p) => p.id === apiProject.id);
-          return mapApiProjectToUi(apiProject, fallback);
-        }));
+        setAllProjects(projects.map((apiProject) => mapApiProjectToUi(apiProject)));
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to load API projects', error);
@@ -703,10 +710,7 @@ export function Projects() {
     try {
       const { projects } = await projectsApi.list();
       setAllProjects(
-        projects.map((apiProject) => {
-          const fallback = mockProjects.find((mp) => mp.id === apiProject.id);
-          return mapApiProjectToUi(apiProject, fallback);
-        })
+        projects.map((apiProject) => mapApiProjectToUi(apiProject))
       );
     } catch (error) {
       // eslint-disable-next-line no-console
