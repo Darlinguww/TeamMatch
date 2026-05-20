@@ -15,5 +15,5 @@ services:
       - PORT=3001
     volumes:
       - ./ai-service:/app
-      - /app/node_modules
+      - ai_service_node_modules:/app/node_modules
  

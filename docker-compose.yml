@@ -7,6 +7,7 @@ volumes:
   neo4j_logs:
   neo4j_plugins:
   backend_node_modules:
+  ai_service_node_modules:
 
 services:
   # ─────────────────────────────────────────────
@@ -20,8 +21,9 @@ services:
       - '7687:7687'   # Bolt protocol (driver)
     environment:
       - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
-      - NEO4J_USER=${NEO4J_USER}
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      # Credenciales para healthcheck (no usar prefijo NEO4J_ — Neo4j 5 las mapea a config inválida)
+      - TEAMMATCH_NEO4J_USER=${NEO4J_USER}
+      - TEAMMATCH_NEO4J_PASSWORD=${NEO4J_PASSWORD}
       # Plugins: formato JSON aceptado por neo4j-admin / docker entrypoint
       - 'NEO4J_PLUGINS=["graph-data-science","apoc"]'
       - NEO4J_dbms_security_procedures_unrestricted=gds.*,apoc.*
@@ -42,12 +44,12 @@ services:
       test:
         [
           'CMD-SHELL',
-          'cypher-shell -u "$$NEO4J_USER" -p "$$NEO4J_PASSWORD" "RETURN 1" AS ok',
+          'cypher-shell -u "$$TEAMMATCH_NEO4J_USER" -p "$$TEAMMATCH_NEO4J_PASSWORD" "RETURN 1"',
         ]
-      interval: 15s
-      timeout: 10s
-      retries: 12
-      start_period: 120s
+      interval: 10s
+      timeout: 15s
+      retries: 18
+      start_period: 180s
  
   # ─────────────────────────────────────────────
   # FRONTEND — React + Vite + TypeScript
@@ -122,6 +124,7 @@ services:
       - NODE_ENV=${NODE_ENV}
     volumes:
       - ./ai-service:/app
+      - ai_service_node_modules:/app/node_modules
     networks:
       - teammatch-net
     restart: unless-stopped

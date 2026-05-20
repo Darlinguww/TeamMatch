@@ -4,8 +4,6 @@ import { executeWithAzureOpenAIFallback } from "../llm/azure-openai.executor.js"
 import { createEmptyMatchmakingResult } from "../llm/azure-openai.fallbacks.js";
 import { SYSTEM_PROMPT, buildUserPrompt } from "./matchmaking.prompts.js";
 import type {
-  CandidateProfile,
-  ProjectRequirements,
   MatchmakingResult,
   TeamProposal,
   MatchmakingRequest,
