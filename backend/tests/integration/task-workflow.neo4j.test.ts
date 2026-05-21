@@ -28,6 +28,7 @@ describe.skipIf(!hasNeo4jIntegration())('ciclo de vida de tarea — Neo4j real',
   let httpGraph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
   let rejectGraph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
   let spanishGraph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
+  let removedAssigneeGraph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
 
   beforeAll(async () => {
     const reachable = await verifyNeo4jConnection();
@@ -41,10 +42,16 @@ describe.skipIf(!hasNeo4jIntegration())('ciclo de vida de tarea — Neo4j real',
       httpGraph = await seedProjectTaskGraph(session, `${TEST_PREFIX}-http`);
       rejectGraph = await seedProjectTaskGraph(session, `${TEST_PREFIX}-rej`);
       spanishGraph = await seedProjectTaskGraph(session, `${TEST_PREFIX}-es`);
+      removedAssigneeGraph = await seedProjectTaskGraph(session, `${TEST_PREFIX}-removed`);
       await session.run(
         `MATCH (t:Tarea {taskId: $taskId})
          SET t.status = 'en progreso', t.estado = 'en progreso'`,
         { taskId: spanishGraph.taskId }
+      );
+      await session.run(
+        `MATCH (:Usuario {userId: $memberId})-[membership:PERTENECE_A]->(:Proyecto {projectId: $projectId})
+         DELETE membership`,
+        { memberId: removedAssigneeGraph.memberId, projectId: removedAssigneeGraph.projectId }
       );
     } finally {
       await session.close();
@@ -87,6 +94,12 @@ describe.skipIf(!hasNeo4jIntegration())('ciclo de vida de tarea — Neo4j real',
     await expect(service.reviewTask(graph.taskId, graph.memberId, {
       decision: 'approved',
       comment: null
+    })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('impide que un asignado removido del proyecto actualice la tarea', async () => {
+    await expect(service.updateStatus(removedAssigneeGraph.taskId, removedAssigneeGraph.memberId, {
+      status: 'en revision'
     })).rejects.toBeInstanceOf(ForbiddenError);
   });
 

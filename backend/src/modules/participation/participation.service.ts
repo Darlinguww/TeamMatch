@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { ParticipationRepository } from './participation.repository.js';
 import type { ParticipationRequest, RoleVacancy } from './participation.types.js';
 
@@ -112,19 +112,6 @@ export class ParticipationService {
 
     const resolvedAt = new Date().toISOString();
 
-    if (decision === 'approved') {
-      if (pending.kind === 'JOIN_PROJECT') {
-        await this.repository.addMemberToProject(pending.projectId, pending.applicantUserId, 'miembro');
-      } else {
-        const roleName = pending.roleName ?? 'miembro';
-        const vacancy = await this.repository.getRoleVacancy(pending.projectId, roleName);
-        if (!vacancy || vacancy.available <= 0) {
-          throw new BadRequestError('No hay vacantes disponibles para este rol');
-        }
-        await this.repository.addMemberToProject(pending.projectId, pending.applicantUserId, roleName);
-      }
-    }
-
     const applicantType =
       pending.kind === 'JOIN_PROJECT'
         ? decision === 'approved'
@@ -143,8 +130,14 @@ export class ParticipationService {
           ? `Tu postulación al rol "${pending.roleName}" fue aprobada`
           : `Tu postulación al rol "${pending.roleName}" fue rechazada`;
 
-    await this.repository.resolveParticipationRequest({
+    const resolved = await this.repository.resolveLeaderResponse({
       requestId: pending.requestId,
+      notificationId,
+      leaderUserId,
+      projectId: pending.projectId,
+      applicantUserId: pending.applicantUserId,
+      kind: pending.kind,
+      roleName: pending.roleName,
       resolverUserId: leaderUserId,
       status: decision,
       resolvedAt,
@@ -153,7 +146,13 @@ export class ParticipationService {
       applicantNotificationMessage: applicantMessage,
     });
 
-    await this.repository.dismissLeaderNotification(notificationId, leaderUserId);
+    if (!resolved) {
+      throw new ConflictError(
+        decision === 'approved'
+          ? 'La solicitud ya fue resuelta o no hay vacantes disponibles'
+          : 'La solicitud ya fue resuelta'
+      );
+    }
 
     return { requestId: pending.requestId, status: decision };
   }
