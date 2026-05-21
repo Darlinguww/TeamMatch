@@ -1,7 +1,16 @@
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { CreateTaskInput, TASK_STATUSES, Task, TaskReview, TaskStatus, UpdateTaskInput } from './types/task.types.js';
 
-const ALLOWED_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+/** Transiciones que puede hacer un miembro (Kanban: avanza hasta revisión). */
+const MEMBER_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  pendiente: ['en progreso'],
+  'en progreso': ['en revision'],
+  'en revision': ['en progreso'],
+  completada: []
+};
+
+/** Transiciones del líder (incluye aprobar completada desde revisión). */
+const LEADER_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   pendiente: ['en progreso'],
   'en progreso': ['en revision'],
   'en revision': ['en progreso', 'completada'],
@@ -67,7 +76,7 @@ export class TaskService {
   }
 
   public async getTask(userId: string, taskId: string): Promise<Task> {
-    await this.ensureTaskLeader(userId, taskId);
+    await this.ensureTaskAccess(userId, taskId);
     const task = await this.repository.getTask(taskId);
 
     if (!task) {
@@ -89,11 +98,23 @@ export class TaskService {
       assignedUserId?: unknown;
     }
   ): Promise<Task> {
-    await this.ensureTaskLeader(userId, taskId);
+    await this.ensureTaskAccess(userId, taskId);
     const currentTask = await this.repository.getTask(taskId);
 
     if (!currentTask) {
       throw new NotFoundError('Tarea no encontrada');
+    }
+
+    const isLeader = await this.isUserLeaderForTask(userId, taskId);
+    const touchesNonStatusFields =
+      Object.prototype.hasOwnProperty.call(input, 'title') ||
+      Object.prototype.hasOwnProperty.call(input, 'description') ||
+      Object.prototype.hasOwnProperty.call(input, 'assignedUserId') ||
+      Object.prototype.hasOwnProperty.call(input, 'userAsigned') ||
+      Object.prototype.hasOwnProperty.call(input, 'sprint');
+
+    if (touchesNonStatusFields && !isLeader) {
+      throw new ForbiddenError('Only project leaders can manage task details');
     }
 
     const patch: UpdateTaskInput = { taskId };
@@ -105,9 +126,8 @@ export class TaskService {
     }
     if (Object.prototype.hasOwnProperty.call(input, 'status')) {
       patch.status = this.parseStatus(input.status);
-      if (!(await this.isUserLeaderForTask(userId, taskId))) {
-        this.ensureValidStatusTransition(currentTask.status, patch.status);
-      }
+      const transitions = isLeader ? LEADER_STATUS_TRANSITIONS : MEMBER_STATUS_TRANSITIONS;
+      this.ensureValidStatusTransition(currentTask.status, patch.status, transitions);
     }
     if (
       Object.prototype.hasOwnProperty.call(input, 'assignedUserId') ||
@@ -311,12 +331,16 @@ export class TaskService {
     throw new BadRequestError('Estado no valido');
   }
 
-  private ensureValidStatusTransition(currentStatus: TaskStatus, nextStatus: TaskStatus): void {
+  private ensureValidStatusTransition(
+    currentStatus: TaskStatus,
+    nextStatus: TaskStatus,
+    allowedTransitions: Record<TaskStatus, TaskStatus[]>
+  ): void {
     if (currentStatus === nextStatus) {
       return;
     }
 
-    if (!ALLOWED_STATUS_TRANSITIONS[currentStatus].includes(nextStatus)) {
+    if (!allowedTransitions[currentStatus].includes(nextStatus)) {
       throw new BadRequestError(`Transicion de estado no permitida: ${currentStatus} -> ${nextStatus}`);
     }
   }

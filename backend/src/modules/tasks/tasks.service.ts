@@ -75,7 +75,7 @@ export class TasksService {
     if (['in_progress', 'en_progreso'].includes(normalized)) {
       return 'en progreso';
     }
-    if (['in_review', 'en_revision'].includes(normalized)) {
+    if (['in_review', 'en_revision', 'para_revision', 'para_revisión'].includes(normalized)) {
       return 'en revision';
     }
     if (['completed', 'completada'].includes(normalized)) {

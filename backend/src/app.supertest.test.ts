@@ -28,10 +28,18 @@ describe('API HTTP con Supertest', () => {
     expect(['azure', 'manual']).toContain(response.body.source);
     expect(Array.isArray(response.body.availability)).toBe(true);
 
+    expect(response.body.availability.length).toBeGreaterThan(0);
     if (response.body.source === 'manual') {
-      expect(response.body.availability).toEqual([]);
-    } else {
-      expect(response.body.availability.length).toBeGreaterThan(0);
+      expect(response.body.availability).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            day: 'friday',
+            timeSlots: expect.arrayContaining([
+              expect.objectContaining({ start: '08:00', end: '10:00' })
+            ])
+          })
+        ])
+      );
     }
   });
 

@@ -17,6 +17,23 @@ class FakeTaskRepository implements TaskRepository {
     return projectId ? this.isUserInProject(userId, projectId) : false;
   }
 
+  public async isUserProjectLeader(userId: string, projectId: string): Promise<boolean> {
+    return userId === 'leader-1' && (this.projectMembers.get(projectId)?.has(userId) ?? false);
+  }
+
+  public async isUserProjectLeaderByTask(userId: string, taskId: string): Promise<boolean> {
+    const projectId = this.taskProjects.get(taskId);
+    return projectId ? this.isUserProjectLeader(userId, projectId) : false;
+  }
+
+  public async getProjectIdForTask(taskId: string): Promise<string | null> {
+    return this.taskProjects.get(taskId) ?? null;
+  }
+
+  public async findProjectLeaderId(projectId: string): Promise<string | null> {
+    return this.projectMembers.has(projectId) ? 'leader-1' : null;
+  }
+
   public async isTaskInProject(taskId: string): Promise<boolean> {
     return this.taskProjects.has(taskId);
   }
@@ -119,7 +136,7 @@ describe('TaskService seguridad y estados', () => {
     })).rejects.toBeInstanceOf(BadRequestError);
   });
 
-  it('aplica el flujo pendiente -> en progreso -> en revision -> completada', async () => {
+  it('aplica el flujo Kanban: miembro avanza hasta revision y el lider completa', async () => {
     const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Flujo feliz' });
 
     await expect(service.updateTask('member-1', task.taskId, {
@@ -131,6 +148,10 @@ describe('TaskService seguridad y estados', () => {
     })).resolves.toMatchObject({ status: 'en revision' });
 
     await expect(service.updateTask('member-1', task.taskId, {
+      status: 'completada'
+    })).rejects.toBeInstanceOf(BadRequestError);
+
+    await expect(service.updateTask('leader-1', task.taskId, {
       status: 'completada'
     })).resolves.toMatchObject({ status: 'completada' });
   });
@@ -163,11 +184,19 @@ describe('TaskService seguridad y estados', () => {
 
     await service.updateTask('member-1', task.taskId, { status: 'en progreso' });
     await service.updateTask('member-1', task.taskId, { status: 'en revision' });
-    await service.updateTask('member-1', task.taskId, { status: 'completada' });
+    await service.updateTask('leader-1', task.taskId, { status: 'completada' });
 
     await expect(service.updateTask('member-1', task.taskId, {
       status: 'en progreso'
     })).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('impide que un miembro edite titulo o asignacion', async () => {
+    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Solo lectura de campos' });
+
+    await expect(service.updateTask('member-1', task.taskId, {
+      title: 'Cambio no permitido'
+    })).rejects.toBeInstanceOf(ForbiddenError);
   });
 
   it('protege lectura, actualizacion y borrado contra IDOR', async () => {
