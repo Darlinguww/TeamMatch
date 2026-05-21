@@ -11,6 +11,7 @@ function buildCandidate(overrides: Partial<MatchmakingCandidate> = {}): Matchmak
     userId: 'c1',
     user: 'Candidate',
     experience: [{ skillName: 'React', yearsOfExperience: 3, level: 'advanced', category: 'frontend' }],
+    profileSkills: [],
     availability: [{ day: 'monday', timeSlots: [{ start: '09:00', end: '17:00' }] }],
     reputationScore: 0.8,
     ...overrides
@@ -62,5 +63,52 @@ describe('matchmaking.utils — pesos 60/20/20', () => {
 
     expect(high.breakdown.reputation).toBeGreaterThan(low.breakdown.reputation);
     expect(high.score).toBeGreaterThan(low.score);
+  });
+
+  it('cuenta habilidades de perfil aunque no haya experiencia en el grafo', () => {
+    const result = scoreMatchmakingCandidate(
+      buildCandidate({ experience: [], profileSkills: ['React'] }),
+      roles,
+      [],
+      {}
+    );
+
+    expect(result.breakdown.skills).toBeGreaterThan(0);
+    expect(result.coverage.coveredRequiredSkills).toContain('react');
+  });
+
+  it('otorga disponibilidad base cuando el candidato tiene slots y no hay requisito horario', () => {
+    const result = scoreMatchmakingCandidate(buildCandidate(), roles, [], {});
+
+    expect(result.breakdown.availability).toBe(20);
+  });
+
+  it('limita el score total si no cubre ninguna habilidad requerida', () => {
+    const result = scoreMatchmakingCandidate(
+      buildCandidate({ experience: [], profileSkills: [], availability: [] }),
+      roles,
+      [],
+      {}
+    );
+
+    expect(result.coverage.coveredRequiredSkills).toHaveLength(0);
+    expect(result.score).toBeLessThanOrEqual(25);
+  });
+
+  it('no confunde la habilidad "r" con React', () => {
+    const result = scoreMatchmakingCandidate(
+      buildCandidate({
+        experience: [],
+        profileSkills: ['Bash', 'r', 'SQL'],
+        availability: [{ day: 'monday', timeSlots: [{ start: '09:00', end: '17:00' }] }]
+      }),
+      roles,
+      [],
+      {}
+    );
+
+    expect(result.coverage.coveredRequiredSkills).not.toContain('react');
+    expect(result.breakdown.skills).toBe(0);
+    expect(result.score).toBeLessThanOrEqual(25);
   });
 });

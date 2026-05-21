@@ -47,7 +47,12 @@ function getRequiredSkills(roles: MatchmakingRoleRequirement[]): string[] {
 }
 
 function getCandidateSkills(candidate: MatchmakingCandidate | MatchmakingTeamMember): string[] {
-  return uniqueValues(candidate.experience.map((item) => normalizeSkillName(item.skillName)).filter(Boolean));
+  const fromExperience = candidate.experience.map((item) => normalizeSkillName(item.skillName)).filter(Boolean);
+  const fromProfile = 'profileSkills' in candidate
+    ? candidate.profileSkills.map(normalizeSkillName).filter(Boolean)
+    : [];
+
+  return uniqueValues([...fromExperience, ...fromProfile]);
 }
 
 function getAverageYears(candidate: MatchmakingCandidate | MatchmakingTeamMember): number {
@@ -107,7 +112,8 @@ function scoreAvailability(candidate: MatchmakingCandidate, options: Matchmaking
   const availabilityRequirement = options.availability;
 
   if (!availabilityRequirement) {
-    return 0;
+    const hasAnySlot = candidate.availability.some((day) => day.timeSlots.length > 0);
+    return hasAnySlot ? MAX_AVAILABILITY_SCORE : 0;
   }
 
   const matchesRequirement = candidate.availability.some((dayAvailability) => (
@@ -255,7 +261,7 @@ export function scoreMatchmakingCandidate(
     redundancyPenalty: scoreRedundancy(coverage.coveredRequiredSkills, teamMembers),
     experienceBalance: scoreExperienceBalance(candidate, teamMembers)
   };
-  const score = roundScore(clamp(
+  let score = roundScore(clamp(
     breakdown.skills
     + breakdown.availability
     + breakdown.reputation
@@ -266,6 +272,10 @@ export function scoreMatchmakingCandidate(
     0,
     100
   ));
+
+  if (coverage.totalRequiredSkills > 0 && coverage.coveredRequiredSkills.length === 0) {
+    score = Math.min(score, 25);
+  }
 
   return {
     userId: candidate.userId,

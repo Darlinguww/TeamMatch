@@ -3,6 +3,7 @@ import { MatchmakingRepository } from './matchmaking.repository.js';
 import type {
   MatchmakingOptions,
   MatchmakingResult,
+  OpenProjectRecommendation,
   ProjectMatchmakingPage,
   ProjectMatchmakingResult
 } from './matchmaking.types.js';
@@ -32,6 +33,37 @@ export class MatchmakingService {
         total: result.matches.length
       }
     };
+  }
+
+  public async scoreUserAgainstProject(userId: string, projectId: string): Promise<number> {
+    const context = await this.matchmakingRepository.findProjectContext(projectId.trim());
+
+    if (!context) {
+      return 0;
+    }
+
+    const candidate = context.candidates.find((item) => item.userId === userId);
+
+    if (!candidate) {
+      return 0;
+    }
+
+    return scoreMatchmakingCandidate(candidate, context.roles, context.teamMembers, {}).score;
+  }
+
+  public async recommendOpenProjectsForUser(
+    userId: string,
+    openProjects: Array<{ projectId: string; title: string }>
+  ): Promise<OpenProjectRecommendation[]> {
+    const recommendations = await Promise.all(
+      openProjects.map(async (project) => ({
+        projectId: project.projectId,
+        title: project.title,
+        score: await this.scoreUserAgainstProject(userId, project.projectId)
+      }))
+    );
+
+    return recommendations.sort((left, right) => right.score - left.score);
   }
 
   public async scoreProjectCandidates(projectId: string, options: MatchmakingOptions = {}): Promise<ProjectMatchmakingResult> {

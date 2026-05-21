@@ -23,6 +23,7 @@ import {
   isApiModeEnabled,
   loadDashboardProjectData,
   mapApiProjectToUi,
+  matchmakingApi,
   projectsApi,
   type ProjectTaskProgress,
 } from '../lib/projectApi';
@@ -34,6 +35,7 @@ export function Dashboard() {
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [projectProgress, setProjectProgress] = useState<Record<string, ProjectTaskProgress>>({});
   const [recommendedProjects, setRecommendedProjects] = useState<Project[]>([]);
+  const [recommendationScores, setRecommendationScores] = useState<Record<string, number>>({});
   const [membershipRefresh, setMembershipRefresh] = useState(0);
 
   useEffect(() => {
@@ -62,7 +64,8 @@ export function Dashboard() {
     setMyProjects([]);
     setMyTasks([]);
     setProjectProgress({});
-    setRecommendedProjects([]);
+      setRecommendedProjects([]);
+      setRecommendationScores({});
 
     let cancelled = false;
     (async () => {
@@ -89,18 +92,32 @@ export function Dashboard() {
       }
 
       try {
-        const { projects } = await projectsApi.listOpenProjects();
+        const [{ projects }, { recommendations }] = await Promise.all([
+          projectsApi.listOpenProjects(),
+          matchmakingApi.getOpenRecommendations(),
+        ]);
         if (!cancelled) {
+          const scoreByProjectId = Object.fromEntries(
+            recommendations.map((item) => [item.projectId, Math.round(item.score)])
+          );
           const discoverable = projects
             .map((apiProject) => mapApiProjectToUi(apiProject))
             .filter((p) => !memberProjectIds.has(p.id))
+            .sort(
+              (left, right) =>
+                (scoreByProjectId[right.id] ?? 0) - (scoreByProjectId[left.id] ?? 0)
+            )
             .slice(0, 3);
+          setRecommendationScores(scoreByProjectId);
           setRecommendedProjects(discoverable);
         }
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to load recommended projects', error);
-        if (!cancelled) setRecommendedProjects([]);
+        if (!cancelled) {
+          setRecommendedProjects([]);
+          setRecommendationScores({});
+        }
       }
     })();
 
@@ -413,14 +430,9 @@ export function Dashboard() {
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             {recommendedProjects.map((project) => {
-              const userSkills = user.skills?.map((skill) => skill.name.toLowerCase()) ?? [];
-              const projectSkills = project.requiredSkills.map((skill) => skill.name.toLowerCase());
-              const matchedSkills = projectSkills.filter((skill) =>
-                userSkills.some((userSkill) => userSkill.includes(skill) || skill.includes(userSkill))
-              );
-              const matchScore = skillCount > 0 && projectSkills.length > 0
-                ? Math.round((matchedSkills.length / projectSkills.length) * 100)
-                : null;
+              const apiScore = recommendationScores[project.id];
+              const matchScore =
+                typeof apiScore === 'number' && apiScore > 0 ? apiScore : null;
 
               return (
                 <div key={project.id} className="p-4 rounded-lg border bg-card">

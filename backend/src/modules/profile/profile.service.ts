@@ -18,6 +18,7 @@ import { UpdateProfileExperienceDto } from './dto/update-profile-experience.dto.
 import { UpdateProfileSkillsDto } from './dto/update-profile-skills.dto.js';
 import { ProfileRepository } from './repositories/profile.repository.js';
 import { PublicProfile, PublicProfileSearchResult, UserReputation } from './types/profile.types.js';
+import { convertPdfToText } from '../../utils/pdfToText.js';
 
 const PROMPT_INJECTION_PATTERNS = [
   /ignore (?:all )?previous instructions/i,
@@ -46,34 +47,6 @@ function sanitizeAiPrompt(text: string): string {
   return sanitized;
 }
 
-async function extractTextFromPdf(file: Express.Multer.File): Promise<string> {
-  try {
-    const pdfParseModule = (await import('pdf-parse')) as unknown as {
-      default?: (buffer: Buffer) => Promise<{ text: string }>;
-      PDFParse?: new (opts: { data: Buffer }) => { getText: () => Promise<{ text: string }> };
-      (buffer: Buffer): Promise<{ text: string }>;
-    };
-
-    const buffer = file.buffer as Buffer;
-
-    if (pdfParseModule.PDFParse) {
-      const parser = new pdfParseModule.PDFParse({ data: buffer });
-      const textResult = await parser.getText();
-      const text = typeof textResult.text === 'string' ? textResult.text.trim() : '';
-      if (text) return text;
-    }
-
-    const parser =
-      pdfParseModule.default ??
-      (pdfParseModule as unknown as (buffer: Buffer) => Promise<{ text: string }>);
-    const result = await parser(buffer);
-    return typeof result.text === 'string' ? result.text.trim() : '';
-  } catch (error) {
-    console.error('PDF parse failed', error);
-    return '';
-  }
-}
-
 export class ProfileService {
   public constructor(private readonly profileRepository: ProfileRepository) {}
 
@@ -94,10 +67,12 @@ export class ProfileService {
     let extractedText = '';
 
     if (input.file) {
-      extractedText = await extractTextFromPdf(input.file);
-      if (!extractedText) {
+      try {
+        extractedText = await convertPdfToText(input.file.buffer as Buffer);
+      } catch (error) {
+        console.error('[profile] PDF to text failed', error);
         throw new BadRequestError(
-          'No se pudo extraer texto del PDF. Usa un PDF con texto seleccionable (no solo imagen escaneada).'
+          'No se pudo extraer texto del PDF (extracción digital ni OCR). Prueba pegar el contenido en "Texto libre" o subir un archivo .txt.'
         );
       }
     }
@@ -212,7 +187,10 @@ export class ProfileService {
       throw new NotFoundError('User profile not found');
     }
 
-    return profile;
+    await this.profileRepository.syncExperienceFromProfileSkills(userId, input.skills);
+
+    const refreshed = await this.profileRepository.findPublicProfileByUserId(userId);
+    return refreshed ?? profile;
   }
 
   public async getPublicProfile(userId: string): Promise<PublicProfile> {

@@ -15,8 +15,16 @@ export interface MatchmakingCandidate {
   userId: string;
   user: string;
   experience: SkillExperience[];
+  /** Skills from [:TIENE_HABILIDAD] (profile); merged with experience for scoring (SCRUM Phase 1). */
+  profileSkills: string[];
   availability: AvailabilityDay[];
   reputationScore: number;
+}
+
+export interface OpenProjectRecommendation {
+  projectId: string;
+  title: string;
+  score: number;
 }
 
 export interface MatchmakingProjectContext {

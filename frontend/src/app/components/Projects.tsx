@@ -16,7 +16,7 @@ import { Link } from 'react-router';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { useAuth } from '../lib/authContext';
-import { isApiModeEnabled, mapApiProjectToUi, projectsApi } from '../lib/projectApi';
+import { isApiModeEnabled, mapApiProjectToUi, matchmakingApi, projectsApi } from '../lib/projectApi';
 import { useSettings } from '../lib/settingsContext';
 import { ROLE_SUGGESTIONS, SKILL_SUGGESTIONS } from '../lib/skillCatalog';
 
@@ -680,17 +680,24 @@ export function Projects() {
   const [categoryFilter,   setCategoryFilter]   = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('all');
   const [statusFilter,     setStatusFilter]     = useState<'all' | 'open' | 'in-progress' | 'completed'>('all');
+  const [recommendationScores, setRecommendationScores] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!isApiModeEnabled()) return;
 
     setAllProjects([]);
+    setRecommendationScores({});
     let cancelled = false;
     (async () => {
       try {
-        const [{ projects: memberProjects }, { projects: openProjects }] = await Promise.all([
+        const [
+          { projects: memberProjects },
+          { projects: openProjects },
+          { recommendations },
+        ] = await Promise.all([
           projectsApi.list(),
           projectsApi.listOpenProjects(),
+          matchmakingApi.getOpenRecommendations(),
         ]);
         if (cancelled) return;
 
@@ -710,9 +717,13 @@ export function Projects() {
           }
         }
         setAllProjects([...byId.values()]);
+        setRecommendationScores(
+          Object.fromEntries(recommendations.map((item) => [item.projectId, Math.round(item.score)]))
+        );
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to load API projects', error);
+        setRecommendationScores({});
       }
     })();
 
@@ -736,20 +747,29 @@ export function Projects() {
   const categories         = ['all', ...new Set(allProjects.map(p => p.category))];
 
   const calcMatch = (project: Project) => {
+    if (isApiModeEnabled()) {
+      const apiScore = recommendationScores[project.id];
+      return typeof apiScore === 'number' ? apiScore : 0;
+    }
     if (!user?.skills?.length) return 0;
-    const userSkills = user.skills.map(s => s.name.toLowerCase());
-    const needed     = project.requiredSkills.map(s => s.name.toLowerCase());
+    const userSkills = new Set(user.skills.map((s) => s.name.trim().toLowerCase()));
+    const needed = project.requiredSkills.map((s) => s.name.trim().toLowerCase()).filter(Boolean);
     if (!needed.length) return 0;
-    const hits = userSkills.filter(sk => needed.some(n => n.includes(sk) || sk.includes(n)));
+    const hits = needed.filter((skill) => userSkills.has(skill));
     return Math.min(Math.round((hits.length / needed.length) * 100), 100);
   };
 
   const reloadProjectsFromApi = async () => {
     if (!isApiModeEnabled()) return;
     try {
-      const [{ projects: memberProjects }, { projects: openProjects }] = await Promise.all([
+      const [
+        { projects: memberProjects },
+        { projects: openProjects },
+        { recommendations },
+      ] = await Promise.all([
         projectsApi.list(),
         projectsApi.listOpenProjects(),
+        matchmakingApi.getOpenRecommendations(),
       ]);
       const byId = new Map<string, Project>();
       for (const apiProject of memberProjects) {
@@ -767,6 +787,9 @@ export function Projects() {
         }
       }
       setAllProjects([...byId.values()]);
+      setRecommendationScores(
+        Object.fromEntries(recommendations.map((item) => [item.projectId, Math.round(item.score)]))
+      );
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to reload projects', error);

@@ -99,6 +99,36 @@ export class ProfileRepository {
     return userExists ? this.findPublicProfileByUserId(userId) : null;
   }
 
+  /** Keeps TIENE_EXPERIENCIA_EN aligned with profile skills (matchmaking Phase 1 uses both). */
+  public async syncExperienceFromProfileSkills(userId: string, skills: string[]): Promise<void> {
+    if (skills.length === 0) {
+      return;
+    }
+
+    const session = driver.session();
+    const updatedAt = new Date().toISOString();
+
+    try {
+      await session.run(
+        `MATCH (u:Usuario {userId: $userId})
+         UNWIND $skills AS skillName
+         WITH u, trim(skillName) AS rawName
+         WHERE rawName <> ''
+         MERGE (skill:Habilidad {normalizedName: toLower(rawName)})
+         ON CREATE SET skill.name = rawName,
+                       skill.createdAt = $updatedAt
+         SET skill.updatedAt = $updatedAt
+         MERGE (u)-[exp:TIENE_EXPERIENCIA_EN]->(skill)
+         ON CREATE SET exp.yearsOfExperience = 2.0,
+                       exp.level = 'intermediate',
+                       exp.updatedAt = $updatedAt`,
+        { userId, skills, updatedAt }
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
   public async replaceUserExperience(userId: string, experience: SkillExperienceInput[]): Promise<PublicProfile | null> {
     const session = driver.session();
     const updatedAt = new Date().toISOString();

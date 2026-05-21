@@ -7,11 +7,14 @@ import { Neo4jTaskRepository } from '../tasks/repositories/task.repository.js';
 import { TaskService } from '../tasks/task.service.js';
 import { ParticipationRepository } from '../participation/participation.repository.js';
 import { ParticipationService } from '../participation/participation.service.js';
+import { MatchmakingRepository } from '../matchmaking/matchmaking.repository.js';
+import { MatchmakingService } from '../matchmaking/matchmaking.service.js';
 import { Neo4jProjectRepository } from './repositories/project.repository.js';
 import { ProjectService } from './project.service.js';
 
 const router = Router();
 const projectService = new ProjectService(new Neo4jProjectRepository());
+const matchmakingService = new MatchmakingService(new MatchmakingRepository());
 const participationService = new ParticipationService(new ParticipationRepository());
 const taskService = new TaskService(new Neo4jTaskRepository());
 
@@ -29,6 +32,17 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
 router.get('/open', requireAuth, asyncHandler(async (req, res) => {
   const projects = await projectService.listOpenProjects(req.user!.userId);
   res.status(200).json({ projects });
+}));
+
+router.get('/open/recommendations', requireAuth, asyncHandler(async (req, res) => {
+  const userId = req.user!.userId;
+  const projects = await projectService.listOpenProjects(userId);
+  const recommendations = await matchmakingService.recommendOpenProjectsForUser(
+    userId,
+    projects.map((project) => ({ projectId: project.id, title: project.title }))
+  );
+
+  res.status(200).json({ recommendations });
 }));
 
 router.get('/:id/participation-status', requireAuth, asyncHandler(async (req, res) => {

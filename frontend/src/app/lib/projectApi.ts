@@ -206,6 +206,10 @@ export interface ApiMatchmakingResult {
 }
 
 export const matchmakingApi = {
+  getOpenRecommendations: () =>
+    resourceRequest<{
+      recommendations: Array<{ projectId: string; title: string; score: number }>;
+    }>('/projects/open/recommendations'),
   getProjectMatches: (projectId: string, limit = 30, offset = 0) =>
     resourceRequest<{
       projectId: string;

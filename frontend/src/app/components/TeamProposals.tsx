@@ -68,10 +68,10 @@ function matchToMemberScore(match: ApiMatchmakingResult, role: string): MemberAf
   };
 
   const breakdown = {
-    skills: Math.round(match.breakdown.skills),
-    availability: Math.round(match.breakdown.availability),
-    experience: Math.round(match.breakdown.experienceBalance),
-    feedback: Math.round(match.breakdown.reputation),
+    skills: Math.round((match.breakdown.skills / 60) * 100),
+    availability: Math.round((match.breakdown.availability / 20) * 100),
+    experience: Math.round((match.breakdown.experienceBalance / 5) * 100),
+    feedback: Math.round((match.breakdown.reputation / 20) * 100),
   };
 
   const overall = Math.round(match.score);

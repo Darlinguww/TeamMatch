@@ -164,6 +164,7 @@ function serializeCandidate(value: unknown): MatchmakingCandidate | null {
     userId,
     user: typeof item.user === 'string' ? item.user : '',
     experience: serializeExperience(item.experience),
+    profileSkills: serializeStringArray(item.profileSkills),
     availability: serializeAvailability(item.availability),
     reputationScore: Number(item.reputationScore ?? 0)
   };
@@ -247,6 +248,11 @@ export class MatchmakingRepository {
            }
            CALL {
              WITH candidate
+             OPTIONAL MATCH (candidate)-[:TIENE_HABILIDAD]->(profileSkill:Habilidad)
+             RETURN [name IN collect(DISTINCT profileSkill.name) WHERE name IS NOT NULL] AS profileSkills
+           }
+           CALL {
+             WITH candidate
              OPTIONAL MATCH (candidate)-[:DISPONIBLE_EN]->(availability:Disponibilidad)
              WITH availability
              ORDER BY availability.start
@@ -283,12 +289,13 @@ export class MatchmakingRepository {
                ELSE (reduce(total = 0.0, score IN boundedScores | total + score) / size(boundedScores)) / $maxEvaluationScore
              END AS reputationScore
            }
-           WITH candidate, experience, availability, reputationScore
+           WITH candidate, experience, profileSkills, availability, reputationScore
            ORDER BY toLower(coalesce(candidate.user, '')), candidate.userId
            RETURN collect({
              userId: candidate.userId,
              user: candidate.user,
              experience: experience,
+             profileSkills: profileSkills,
              availability: availability,
              reputationScore: reputationScore
            }) AS candidates
