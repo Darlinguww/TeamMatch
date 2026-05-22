@@ -1075,6 +1075,7 @@ export function ProjectDetails() {
               leader={leader}
               members={teamMembers}
               onMembersChange={setTeamMembers}
+              onTeamUpdated={reloadTeamFromApi}
               canManage={isProjectLeader}
             />
           )}

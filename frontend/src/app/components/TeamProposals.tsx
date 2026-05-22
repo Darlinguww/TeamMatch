@@ -21,7 +21,6 @@ import {
 import {
   computeMemberAffinityScore,
   computeTeamAffinity,
-  scoreColor,
   scoreBadgeColor,
   type MemberAffinityScore,
 } from '../lib/affinityScore';
@@ -31,6 +30,7 @@ import {
   AffinityCriteriaBreakdown,
   AiJustification,
 } from './AffinityScore';
+import { TeamMetricsGrid } from './TeamMetricsGrid';
 
 interface TeamProposal {
   id: string;
@@ -317,15 +317,15 @@ function ProposalCard({
   ];
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-4 bg-gradient-to-r from-primary/5 to-cyan-500/5 border-b">
-        <div className="flex items-start justify-between gap-3">
+    <Card className="overflow-hidden min-w-0">
+      <CardHeader className="pb-4 bg-gradient-to-r from-primary/5 to-cyan-500/5 border-b min-w-0">
+        <div className="flex items-start justify-between gap-3 min-w-0">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base flex items-center gap-2 break-words">
+              <Sparkles className="h-4 w-4 text-primary shrink-0" />
               Propuesta {index + 1}
             </CardTitle>
-            <CardDescription className="mt-1 text-xs leading-relaxed">
+            <CardDescription className="mt-1 text-xs leading-relaxed break-words">
               {proposal.teamJustification}
             </CardDescription>
           </div>
@@ -338,19 +338,7 @@ function ProposalCard({
           compact
         />
 
-        <div className="grid grid-cols-3 gap-3 mt-3">
-          {metrics.map(m => (
-            <div key={m.label} className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <m.icon className="h-3 w-3" />{m.label}
-                </span>
-                <span className={`text-xs font-bold ${scoreColor(m.value)}`}>{m.value}%</span>
-              </div>
-              <AffinityScoreBar value={m.value} />
-            </div>
-          ))}
-        </div>
+        <TeamMetricsGrid metrics={metrics} layout="stacked" className="mt-3" />
       </CardHeader>
 
       <CardContent className="p-4 space-y-3">

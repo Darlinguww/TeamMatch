@@ -259,3 +259,22 @@ html.reduce-motion *::after {
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Evita solapamiento de texto en tarjetas y paneles */
+[data-slot="card"],
+[data-slot="card-header"],
+[data-slot="card-content"],
+[data-slot="card-title"],
+[data-slot="card-description"] {
+  min-width: 0;
+}
+
+[data-slot="card"] p,
+[data-slot="card"] span,
+[data-slot="card"] h4,
+.bg-card p,
+.bg-card span,
+.bg-card h4 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

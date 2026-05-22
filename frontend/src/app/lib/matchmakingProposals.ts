@@ -104,3 +104,58 @@ export function proposalMemberKey(proposalMembers: Array<{ user: { id: string } 
     .sort()
     .join('|');
 }
+
+export interface CandidateRecommendation {
+  match: ApiMatchmakingResult;
+  suggestedRole: string;
+  displayScore: number;
+}
+
+/** Candidatos individuales ordenados por encaje (para invitar desde gestión de equipo). */
+export function buildCandidateRecommendations(
+  project: Project,
+  matches: ApiMatchmakingResult[],
+  authUserId: string,
+  currentMembers: TeamMemberRef[],
+  limit = 15
+): CandidateRecommendation[] {
+  const openSlots = computeOpenRoleSlots(project, currentMembers, project.leaderId);
+  const occupiedIds = new Set([
+    project.leaderId,
+    authUserId,
+    ...currentMembers.map((m) => m.userId),
+  ]);
+
+  const pool = dedupeMatchmakingResults(
+    matches.filter((m) => !occupiedIds.has(m.userId))
+  );
+
+  if (pool.length === 0) {
+    return [];
+  }
+
+  const recommendations: CandidateRecommendation[] = pool.map((match) => {
+    let suggestedRole = 'Miembro del equipo';
+    let displayScore = Math.round(match.score);
+
+    if (openSlots.length > 0) {
+      let bestScore = -1;
+      let bestLabel = openSlots[0].label;
+      for (const slot of openSlots) {
+        const score = scoreMatchForRole(match, slot.roleName);
+        if (score > bestScore) {
+          bestScore = score;
+          bestLabel = slot.label;
+          displayScore = Math.round(score);
+        }
+      }
+      suggestedRole = bestLabel;
+    }
+
+    return { match, suggestedRole, displayScore };
+  });
+
+  return recommendations
+    .sort((a, b) => b.displayScore - a.displayScore)
+    .slice(0, limit);
+}

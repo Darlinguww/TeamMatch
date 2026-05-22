@@ -41,9 +41,11 @@ export function AffinityScoreBar({
   return (
     <div className={cn('space-y-1', className)}>
       {showLabel && (
-        <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">Afinidad</span>
-          <span className={cn('font-bold', scoreColor(value))}>{value}%</span>
+        <div className="flex items-center justify-between gap-2 text-xs min-w-0">
+          <span className="text-muted-foreground shrink-0">Afinidad</span>
+          <span className={cn('font-bold shrink-0 tabular-nums', scoreColor(value))}>
+            {value}%
+          </span>
         </div>
       )}
       <div
@@ -68,23 +70,31 @@ interface AffinityScoreRingProps {
   value: number;
   size?: 'sm' | 'md' | 'lg';
   label?: string;
+  /** Si false, solo muestra el número (evita solapamiento en anillos pequeños). */
+  showLabel?: boolean;
 }
 
 const RING_SIZES = {
-  sm: { box: 'h-12 w-12', text: 'text-xs', sub: 'text-[8px]' },
+  sm: { box: 'h-14 w-14', text: 'text-sm', sub: 'text-[9px]' },
   md: { box: 'h-16 w-16', text: 'text-sm', sub: 'text-[9px]' },
-  lg: { box: 'h-20 w-20', text: 'text-base', sub: 'text-[10px]' },
+  lg: { box: 'h-[4.5rem] w-[4.5rem]', text: 'text-lg', sub: 'text-[10px]' },
 };
 
 export function AffinityScoreRing({
   value,
   size = 'md',
   label = 'score',
+  showLabel,
 }: AffinityScoreRingProps) {
   const s = RING_SIZES[size];
+  const displaySubLabel = showLabel ?? size !== 'sm';
   return (
-    <div className={cn('relative shrink-0', s.box)}>
-      <svg className={cn(s.box, '-rotate-90')} viewBox="0 0 36 36">
+    <div
+      className={cn('relative shrink-0', s.box)}
+      title={displaySubLabel ? undefined : `${value}%`}
+      aria-label={`${value} por ciento${label ? `, ${label}` : ''}`}
+    >
+      <svg className={cn(s.box, '-rotate-90')} viewBox="0 0 36 36" aria-hidden>
         <circle
           cx="18"
           cy="18"
@@ -106,13 +116,20 @@ export function AffinityScoreRing({
           className={scoreColor(value)}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cn('font-bold leading-none', scoreColor(value), s.text)}>
+      <div className="absolute inset-0 flex flex-col items-center justify-center px-1 text-center">
+        <span className={cn('font-bold leading-none tabular-nums', scoreColor(value), s.text)}>
           {value}
         </span>
-        <span className={cn('text-muted-foreground leading-none mt-0.5', s.sub)}>
-          {label}
-        </span>
+        {displaySubLabel && label ? (
+          <span
+            className={cn(
+              'text-muted-foreground leading-tight mt-0.5 max-w-full truncate px-0.5',
+              s.sub
+            )}
+          >
+            {label}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -179,13 +196,15 @@ export function AffinityCriteriaBreakdown({
         const value = breakdown[c.key];
         return (
           <div key={c.key}>
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Icon className="h-3 w-3" />
-                {c.label}
-                <span className="text-[10px] opacity-70">({c.weight})</span>
+            <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 flex-1">
+                <Icon className="h-3 w-3 shrink-0" />
+                <span className="truncate" title={c.label}>
+                  {c.label}
+                </span>
+                <span className="text-[10px] opacity-70 shrink-0">({c.weight})</span>
               </div>
-              <span className={cn('text-xs font-bold', scoreColor(value))}>
+              <span className={cn('text-xs font-bold shrink-0 tabular-nums', scoreColor(value))}>
                 {value}%
               </span>
             </div>

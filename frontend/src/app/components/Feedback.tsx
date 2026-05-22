@@ -150,17 +150,17 @@ function FeedbackCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-3">
-        <div className="text-center p-2 rounded bg-muted/50">
-          <p className="text-xs text-muted-foreground mb-1">Colaboración</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        <div className="text-center p-2 rounded bg-muted/50 min-w-0">
+          <p className="text-xs text-muted-foreground mb-1 break-words">Colaboración</p>
           <p className="font-medium">{feedback.collaboration}/5</p>
         </div>
-        <div className="text-center p-2 rounded bg-muted/50">
-          <p className="text-xs text-muted-foreground mb-1">Comunicación</p>
+        <div className="text-center p-2 rounded bg-muted/50 min-w-0">
+          <p className="text-xs text-muted-foreground mb-1 break-words">Comunicación</p>
           <p className="font-medium">{feedback.communication}/5</p>
         </div>
-        <div className="text-center p-2 rounded bg-muted/50">
-          <p className="text-xs text-muted-foreground mb-1">Técnicas</p>
+        <div className="text-center p-2 rounded bg-muted/50 min-w-0">
+          <p className="text-xs text-muted-foreground mb-1 break-words">Técnicas</p>
           <p className="font-medium">{feedback.technicalSkills}/5</p>
         </div>
       </div>
