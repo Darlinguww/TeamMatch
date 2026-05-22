@@ -31,7 +31,8 @@ UNWIND [
   {name: 'Machine Learning', es_tecnica: true}
 ] AS hab
 MERGE (s:Habilidad {name: hab.name})
-ON CREATE SET s.es_tecnica = hab.es_tecnica, s.normalizedName = hab.name;
+ON CREATE SET s.es_tecnica = hab.es_tecnica, s.normalizedName = toLower(hab.name)
+ON MATCH SET s.normalizedName = coalesce(s.normalizedName, toLower(hab.name));
 
 UNWIND [
   {h1: 'React', h2: 'Vue', peso: 0.85},

@@ -96,7 +96,6 @@ ON CREATE SET skill.name = skillName, skill.createdAt = datetime()
 SET skill.updatedAt = datetime()
 MERGE (u)-[:TIENE_HABILIDAD]->(skill);
 
-// Agregar disponibilidades para usuarios nuevos
 WITH [
   {userId: '5', availability: [{day: 'monday', start: '10:00', end: '14:00'}, {day: 'thursday', start: '15:00', end: '19:00'}]},
   {userId: '6', availability: [{day: 'tuesday', start: '09:00', end: '13:00'}, {day: 'wednesday', start: '09:00', end: '13:00'}, {day: 'friday', start: '14:00', end: '18:00'}]},

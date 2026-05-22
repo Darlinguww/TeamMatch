@@ -279,13 +279,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const syncProfileToApi = async (data: ProfileUpdate): Promise<void> => {
     if (!USE_API_AUTH || !getStoredToken()) return;
-    const skillNames = data.skills.map((s) => s.name).filter(Boolean);
-    if (skillNames.length > 0) {
-      await profileApi.updateSkills(skillNames);
-      await profileApi.updateExperience(
-        buildExperiencePayload(data.skills as User['skills'], data.yearsExperience)
-      );
+    const skillNames = data.skills
+      .map((s) => s.name.trim())
+      .filter((name) => name.length > 0);
+    if (skillNames.length === 0) {
+      return;
     }
+    await profileApi.updateSkills(skillNames);
+    await profileApi.updateExperience(
+      buildExperiencePayload(data.skills as User['skills'], data.yearsExperience)
+    );
   };
 
   const updateOnboarding = async (data: ProfileUpdate): Promise<void> => {

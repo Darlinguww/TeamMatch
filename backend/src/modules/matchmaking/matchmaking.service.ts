@@ -8,6 +8,7 @@ import type {
   ProjectMatchmakingResult
 } from './matchmaking.types.js';
 import {
+  scoreDiscoveryAgainstProject,
   scoreMatchmakingCandidate,
   sortMatchmakingResults
 } from './matchmaking.utils.js';
@@ -48,7 +49,9 @@ export class MatchmakingService {
       return 0;
     }
 
-    return scoreMatchmakingCandidate(candidate, context.roles, context.teamMembers, {}).score;
+    const result = scoreMatchmakingCandidate(candidate, context.roles, context.teamMembers, {});
+
+    return scoreDiscoveryAgainstProject(result, context.roles);
   }
 
   public async recommendOpenProjectsForUser(

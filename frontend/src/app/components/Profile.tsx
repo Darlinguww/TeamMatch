@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { useAuth } from "../lib/authContext";
 import { profileApi } from "../lib/profileApi";
-import { parseAvailabilityFromInput, suggestSkillsFromInput } from "../lib/aiFeatures";
+import { hasBackendSession, parseAvailabilityFromInput, suggestSkillsFromInput } from "../lib/aiFeatures";
 import { SKILL_SUGGESTIONS } from "../lib/skillCatalog";
 import { skillCategoryColors } from "../lib/badgeStyles";
 import { toast } from "sonner";
@@ -154,20 +154,33 @@ export function Profile() {
   // ── save ──
   const handleSave = async () => {
     setSaving(true);
-    await updateProfile({
-      name:           local.name,
-      avatar:         local.avatar ?? null,
-      bio:            local.bio,
-      roleOrProgram:  "",
-      yearsExperience: local.experience,
-      skills:         local.skills.map(s => ({ id: s.id, name: s.name, level: s.level, category: s.category })),
-      interests:      local.interests,
-      hoursPerWeek:   local.availability.hoursPerWeek,
-      preferredTimes: local.availability.preferredTimes,
-      workTypes:      [],
-    });
-    setSaving(false);
-    setIsEditing(false);
+    try {
+      if (hasBackendSession() && parsedAvailability && parsedAvailability.length > 0) {
+        await profileApi.updateAvailability(parsedAvailability);
+      }
+      const skillsToSave = local.skills
+        .map((s) => ({ ...s, name: s.name.trim() }))
+        .filter((s) => s.name.length > 0);
+      await updateProfile({
+        name:           local.name,
+        avatar:         local.avatar ?? null,
+        bio:            local.bio,
+        roleOrProgram:  "",
+        yearsExperience: local.experience,
+        skills:         skillsToSave,
+        interests:      local.interests,
+        hoursPerWeek:   local.availability.hoursPerWeek,
+        preferredTimes: local.availability.preferredTimes,
+        workTypes:      [],
+      });
+      setIsEditing(false);
+      toast.success('Perfil guardado');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo guardar el perfil';
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {

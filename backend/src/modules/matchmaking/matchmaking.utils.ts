@@ -42,6 +42,91 @@ function uniqueValues(values: string[]): string[] {
   return Array.from(new Set(values));
 }
 
+function foldAccents(value: string): string {
+  return value.normalize('NFD').replace(/\p{M}/gu, '');
+}
+
+function skillTokens(skillName: string): string[] {
+  return foldAccents(normalizeSkillName(skillName))
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 2);
+}
+
+/** Groups of related keywords so long project requirements can match short profile skills. */
+const SKILL_AFFINITY_GROUPS: readonly string[][] = [
+  ['english', 'ingles', 'esl', 'tefl', 'toefl', 'c2', 'nativo', 'native', 'bilingual', 'bilingue', 'idioma', 'extranjero', 'foreign', 'linguist', 'lingu', 'fluency', 'fluido', 'language'],
+  ['teaching', 'teacher', 'docente', 'docencia', 'pedagog', 'pedagogy', 'evaluacion', 'acompanamiento', 'education', 'educacion', 'profesor', 'profesora', 'tutor', 'classroom'],
+  ['writing', 'research', 'translation', 'history', 'philosophy', 'literature', 'communication', 'humanities'],
+  ['social', 'community', 'counseling', 'psychology', 'volunteering', 'case management'],
+  ['project management', 'scrum', 'agile', 'leadership', 'planning', 'product management'],
+  ['seo', 'marketing', 'copywriting', 'analytics', 'branding', 'campaign']
+];
+
+function sharesAffinityGroup(requiredSkill: string, candidateSkill: string): boolean {
+  const requiredText = foldAccents(normalizeSkillName(requiredSkill));
+  const candidateText = foldAccents(normalizeSkillName(candidateSkill));
+  const requiredTokens = skillTokens(requiredSkill);
+  const candidateTokens = skillTokens(candidateSkill);
+
+  return SKILL_AFFINITY_GROUPS.some((group) => {
+    const requiredMatches = group.some((keyword) => (
+      requiredText.includes(keyword)
+      || requiredTokens.some((token) => token.includes(keyword) || keyword.includes(token))
+    ));
+    const candidateMatches = group.some((keyword) => (
+      candidateText.includes(keyword)
+      || candidateTokens.some((token) => token.includes(keyword) || keyword.includes(token))
+    ));
+
+    return requiredMatches && candidateMatches;
+  });
+}
+
+export function skillsAreEquivalent(requiredSkill: string, candidateSkill: string): boolean {
+  const required = normalizeSkillName(requiredSkill);
+  const candidate = normalizeSkillName(candidateSkill);
+
+  if (!required || !candidate) {
+    return false;
+  }
+
+  if (required === candidate) {
+    return true;
+  }
+
+  const requiredFolded = foldAccents(required);
+  const candidateFolded = foldAccents(candidate);
+
+  if (requiredFolded === candidateFolded) {
+    return true;
+  }
+
+  const shorter = requiredFolded.length <= candidateFolded.length ? requiredFolded : candidateFolded;
+  const longer = shorter === requiredFolded ? candidateFolded : requiredFolded;
+
+  if (shorter.length >= 3 && longer.includes(shorter)) {
+    return true;
+  }
+
+  const requiredTokens = skillTokens(requiredSkill);
+  const candidateTokens = skillTokens(candidateSkill);
+  const sharedTokens = requiredTokens.filter((token) => candidateTokens.includes(token));
+
+  if (sharedTokens.length >= 2) {
+    return true;
+  }
+
+  if (sharesAffinityGroup(requiredSkill, candidateSkill)) {
+    return true;
+  }
+
+  return false;
+}
+
+function isRequiredSkillCovered(requiredSkill: string, candidateSkills: string[]): boolean {
+  return candidateSkills.some((candidateSkill) => skillsAreEquivalent(requiredSkill, candidateSkill));
+}
+
 function getRequiredSkills(roles: MatchmakingRoleRequirement[]): string[] {
   return uniqueValues(roles.flatMap((role) => role.requiredSkills.map(normalizeSkillName)).filter(Boolean));
 }
@@ -95,9 +180,9 @@ function buildTeamSkillCounts(teamMembers: MatchmakingTeamMember[]): Map<string,
 
 function getCoverage(candidateSkills: string[], roles: MatchmakingRoleRequirement[]): MatchmakingCoverageSummary {
   const requiredSkills = getRequiredSkills(roles);
-  const coveredRequiredSkills = requiredSkills.filter((skill) => candidateSkills.includes(skill));
+  const coveredRequiredSkills = requiredSkills.filter((skill) => isRequiredSkillCovered(skill, candidateSkills));
   const coveredRoles = roles
-    .filter((role) => role.requiredSkills.some((skill) => candidateSkills.includes(normalizeSkillName(skill))))
+    .filter((role) => role.requiredSkills.some((skill) => isRequiredSkillCovered(skill, candidateSkills)))
     .map((role) => role.name);
 
   return {
@@ -148,7 +233,7 @@ function scoreRoleCoverage(coverage: MatchmakingCoverageSummary, roles: Matchmak
 
 function getMatchingCategories(candidate: MatchmakingCandidate, coveredSkills: string[]): SkillCategory[] {
   return Array.from(new Set(candidate.experience
-    .filter((item) => coveredSkills.includes(normalizeSkillName(item.skillName)))
+    .filter((item) => coveredSkills.some((covered) => skillsAreEquivalent(covered, item.skillName)))
     .map((item) => item.category)
     .filter((category) => category !== 'other')));
 }
@@ -239,6 +324,66 @@ function buildReasons(
   }
 
   return reasons;
+}
+
+function normalizeRoleLabel(roleName: string): string {
+  return roleName
+    .replace(/\s*#\d+\s*$/i, '')
+    .replace(/\s*\(×\d+\)\s*$/i, '')
+    .trim();
+}
+
+/** Mirrors frontend `scoreMatchForRole` so open-project cards match owner recommendations. */
+export function scoreMatchForRoleFit(
+  result: Pick<MatchmakingResult, 'score' | 'coverage'>,
+  roleName: string
+): number {
+  const target = normalizeRoleLabel(roleName).toLowerCase();
+
+  if (!target) {
+    return result.score;
+  }
+
+  let bonus = 0;
+
+  if (
+    result.coverage.coveredRoles.some(
+      (role) => normalizeRoleLabel(role).toLowerCase() === target
+    )
+  ) {
+    bonus += 25;
+  }
+
+  if (
+    result.coverage.coveredRequiredSkills.some(
+      (skill) => target.includes(skill.toLowerCase()) || skill.toLowerCase().includes(target)
+    )
+  ) {
+    bonus += 10;
+  }
+
+  return roundScore(clamp(result.score + bonus, 0, 100));
+}
+
+/** Best role-fit score for a user browsing open projects (same number the owner sees). */
+export function scoreDiscoveryAgainstProject(
+  result: MatchmakingResult,
+  roles: MatchmakingRoleRequirement[]
+): number {
+  if (roles.length === 0) {
+    return result.score;
+  }
+
+  let bestScore = result.score;
+
+  for (const role of roles) {
+    const roleScore = scoreMatchForRoleFit(result, role.name);
+    if (roleScore > bestScore) {
+      bestScore = roleScore;
+    }
+  }
+
+  return bestScore;
 }
 
 export function scoreMatchmakingCandidate(

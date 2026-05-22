@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scoreMatchmakingCandidate } from './matchmaking.utils.js';
+import { scoreDiscoveryAgainstProject, scoreMatchmakingCandidate } from './matchmaking.utils.js';
 import type { MatchmakingCandidate, MatchmakingRoleRequirement } from './matchmaking.types.js';
 
 const roles: MatchmakingRoleRequirement[] = [
@@ -93,6 +93,57 @@ describe('matchmaking.utils — pesos 60/20/20', () => {
 
     expect(result.coverage.coveredRequiredSkills).toHaveLength(0);
     expect(result.score).toBeLessThanOrEqual(25);
+  });
+
+  it('alinea el score de descubrimiento con el bonus por rol del modal de equipo', () => {
+    const bilingualRoles: MatchmakingRoleRequirement[] = [
+      {
+        roleId: 'coord',
+        name: 'Coordinador(a) de Bilingüismo',
+        requiredSkills: ['dominio nativo o c2 del idioma extranjero']
+      }
+    ];
+
+    const base = scoreMatchmakingCandidate(
+      buildCandidate({
+        experience: [{ skillName: 'Inglés', yearsOfExperience: 8, level: 'expert', category: 'other' }]
+      }),
+      bilingualRoles,
+      [],
+      {}
+    );
+    const discovery = scoreDiscoveryAgainstProject(base, bilingualRoles);
+
+    expect(base.coverage.coveredRoles).toContain('Coordinador(a) de Bilingüismo');
+    expect(discovery).toBeGreaterThan(base.score);
+    expect(discovery).toBeLessThanOrEqual(100);
+  });
+
+  it('relaciona requisitos largos de idioma con habilidades cortas del perfil', () => {
+    const englishProjectRoles: MatchmakingRoleRequirement[] = [
+      {
+        roleId: 'lang-teacher',
+        name: 'Docente de idiomas',
+        requiredSkills: [
+          'Dominio nativo o C2 del idioma extranjero',
+          'Evaluación pedagógica y acompañamiento docente'
+        ]
+      }
+    ];
+
+    const result = scoreMatchmakingCandidate(
+      buildCandidate({
+        experience: [{ skillName: 'Inglés', yearsOfExperience: 8, level: 'expert', category: 'other' }],
+        profileSkills: ['Evaluación pedagógica']
+      }),
+      englishProjectRoles,
+      [],
+      {}
+    );
+
+    expect(result.coverage.coveredRequiredSkills.length).toBeGreaterThanOrEqual(2);
+    expect(result.breakdown.skills).toBeGreaterThan(30);
+    expect(result.score).toBeGreaterThan(50);
   });
 
   it('no confunde la habilidad "r" con React', () => {
