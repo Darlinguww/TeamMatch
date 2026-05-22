@@ -1,4 +1,12 @@
-import type { AvailabilityDay, ProfileSearchDomainWeights, SkillCategory, SkillExperience } from '../profile/types/profile.types.js';
+import type { AvailabilityDay, ProfileSearchDomainWeights, SkillCategory } from '../profile/types/profile.types.js';
+
+// Estructura de experiencia alineada con las funciones de serialización del Repositorio
+export interface SkillExperience {
+  skillName: string; 
+  category: SkillCategory;
+  yearsOfExperience: number;
+  level: string | null;
+}
 
 export interface MatchmakingRoleRequirement {
   roleId: string;
