@@ -22,7 +22,7 @@ const DOMAIN_SKILLS: Record<string, string[]> = {
   frontend: ['react', 'vue', 'angular', 'css', 'html', 'javascript', 'typescript'],
   backend: ['node.js', 'nodejs', 'express', 'spring', 'django', 'java'],
   mobile: ['flutter', 'react native', 'kotlin', 'swift'],
-  ai: ['python', 'tensorflow', 'pytorch', 'machine learning'],
+  ai: ['python', 'tensorflow', 'pytorch', 'machine learning', 'neo4j'], // Añadido Neo4j para vuestro ecosistema de IA/Grafos
   devops: ['docker', 'kubernetes', 'aws', 'azure', 'gcp']
 };
 
@@ -49,7 +49,7 @@ function getRequiredSkills(roles: MatchmakingRoleRequirement[]): string[] {
 function getCandidateSkills(candidate: MatchmakingCandidate | MatchmakingTeamMember): string[] {
   const fromExperience = candidate.experience.map((item) => normalizeSkillName(item.skillName)).filter(Boolean);
   const fromProfile = 'profileSkills' in candidate
-    ? candidate.profileSkills.map(normalizeSkillName).filter(Boolean)
+    ? (candidate as MatchmakingCandidate).profileSkills.map(normalizeSkillName).filter(Boolean)
     : [];
 
   return uniqueValues([...fromExperience, ...fromProfile]);
@@ -154,20 +154,21 @@ function getMatchingCategories(candidate: MatchmakingCandidate, coveredSkills: s
 }
 
 function getDomainWeights(coveredSkills: string[]): ProfileSearchDomainWeights {
-  return Object.entries(DOMAIN_SKILLS).reduce<ProfileSearchDomainWeights>((weights, [domain, skills]) => {
+  const weights: Record<string, number> = {};
+  
+  for (const [domain, skills] of Object.entries(DOMAIN_SKILLS)) {
     const weight = Math.min(coveredSkills.filter((skill) => skills.includes(skill)).length * 5, 10);
-
     if (weight > 0) {
       weights[domain] = weight;
     }
+  }
 
-    return weights;
-  }, {});
+  return weights as ProfileSearchDomainWeights;
 }
 
 function scoreCategoryDomain(matchingCategories: SkillCategory[], domainWeights: ProfileSearchDomainWeights): number {
   const categoryScore = Math.min(matchingCategories.length, 3);
-  const domainScore = Math.min(Object.values(domainWeights).reduce((total, weight) => total + weight, 0), 10) * 0.2;
+  const domainScore = Math.min(Object.values(domainWeights).reduce((total, weight) => total + (weight || 0), 0), 10) * 0.2;
 
   return roundScore(clamp(categoryScore + domainScore, 0, MAX_CATEGORY_DOMAIN_SCORE));
 }
@@ -234,7 +235,8 @@ function buildReasons(
     reasons.push('Tiene habilidades ya representadas en el equipo actual');
   }
 
-  if (breakdown.experienceBalance >= 6) {
+  // CORREGIDO: Vuestro MAX_EXPERIENCE_BALANCE_SCORE es 5, evaluar '>= 6' hacía este bloque inalcanzable.
+  if (breakdown.experienceBalance >= 3) {
     reasons.push('Mejora el balance de experiencia del equipo');
   }
 
@@ -252,6 +254,7 @@ export function scoreMatchmakingCandidate(
   const matchingCategories = getMatchingCategories(candidate, coverage.coveredRequiredSkills);
   const domainWeights = getDomainWeights(coverage.coveredRequiredSkills);
   const skillsScore = scoreSkillsWithRoleFit(coverage, roles);
+  
   const breakdown: MatchmakingScoreBreakdown = {
     skills: skillsScore,
     availability: scoreAvailability(candidate, options),
@@ -261,6 +264,7 @@ export function scoreMatchmakingCandidate(
     redundancyPenalty: scoreRedundancy(coverage.coveredRequiredSkills, teamMembers),
     experienceBalance: scoreExperienceBalance(candidate, teamMembers)
   };
+  
   let score = roundScore(clamp(
     breakdown.skills
     + breakdown.availability
