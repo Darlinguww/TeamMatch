@@ -255,16 +255,17 @@ export function scoreMatchmakingCandidate(
   const domainWeights = getDomainWeights(coverage.coveredRequiredSkills);
   const skillsScore = scoreSkillsWithRoleFit(coverage, roles);
   
-  const breakdown: MatchmakingScoreBreakdown = {
+const breakdown: MatchmakingScoreBreakdown = {
     skills: skillsScore,
     availability: scoreAvailability(candidate, options),
-    reputation: roundScore(clamp(candidate.reputationScore / 100, 0, 1) * MAX_REPUTATION_SCORE),,
+    // Corregido: Dividimos por 100 para ajustar la escala matemática de 0.0 a 1.0
+    reputation: roundScore(clamp((candidate.reputationScore || 0) / 100, 0, 1) * MAX_REPUTATION_SCORE),
     roleCoverage: scoreRoleCoverage(coverage, roles),
     categoryDomain: scoreCategoryDomain(matchingCategories, domainWeights),
     redundancyPenalty: scoreRedundancy(coverage.coveredRequiredSkills, teamMembers),
     experienceBalance: scoreExperienceBalance(candidate, teamMembers)
   };
-  
+
   let score = roundScore(clamp(
     breakdown.skills
     + breakdown.availability
@@ -290,7 +291,8 @@ export function scoreMatchmakingCandidate(
     matchingCategories,
     domainWeights,
     experienceLevel: getExperienceLevel(candidate),
-    reputationScore: roundScore(clamp(candidate.reputationScore, 0, 1)),
+    // Corregido: Retornamos el valor base 100 real directamente formateado
+    reputationScore: roundScore(candidate.reputationScore || 0),
     isNeutralCandidate: candidate.experience.length === 0,
     reasons: buildReasons(coverage, breakdown, matchingCategories)
   };
