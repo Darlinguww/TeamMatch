@@ -86,7 +86,7 @@ jobs:
 
       - name: Lint
         if: steps.frontend-files.outputs.exists == 'true'
-        run: npm run lint
+        run: npm run lint --if-present
 
       - name: Build de producción
         if: steps.frontend-files.outputs.exists == 'true'
