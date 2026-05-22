@@ -698,8 +698,8 @@ function ProjectCard({
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <div className="flex items-center gap-1"><Clock className="h-3 w-3" />{project.estimatedDuration} semanas</div>
             <div className="flex flex-wrap gap-1">
-              {project.categories.map((c) => (
-                <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
+              {project.categories.map((c, categoryIndex) => (
+                <Badge key={`${project.id}-cat-${categoryIndex}-${c}`} variant="outline" className="text-xs">{c}</Badge>
               ))}
             </div>
           </div>
@@ -713,8 +713,8 @@ function ProjectCard({
           <div>
             <p className="text-xs text-muted-foreground mb-1.5">Habilidades requeridas:</p>
             <div className="flex flex-wrap gap-1">
-              {project.requiredSkills.slice(0, 3).map(s => (
-                <Badge key={s.id} variant="outline" className="text-xs">{s.name}</Badge>
+              {project.requiredSkills.slice(0, 3).map((s, skillIndex) => (
+                <Badge key={`${project.id}-${s.id}-${skillIndex}`} variant="outline" className="text-xs">{s.name}</Badge>
               ))}
               {project.requiredSkills.length > 3 && (
                 <Badge variant="outline" className="text-xs">+{project.requiredSkills.length - 3}</Badge>

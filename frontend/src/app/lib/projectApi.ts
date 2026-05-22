@@ -129,14 +129,27 @@ export function mapApiProjectToUi(api: ApiProjectDetails, fallback?: Project): P
     leaderId,
     requiredSkills:
       fallback?.requiredSkills ??
-      roles.flatMap((r) =>
-        r.skills.map((skill, idx) => ({
-          id: `sk_${api.id}_${idx}`,
-          name: skill,
-          category: 'technical' as const,
-          level: 'intermediate' as const,
-        }))
-      ),
+      (() => {
+        const seen = new Set<string>();
+        return roles.flatMap((role, roleIdx) =>
+          role.skills.map((skill, skillIdx) => {
+            const name = skill.trim();
+            const dedupeKey = name.toLowerCase();
+            return { name, dedupeKey, roleIdx, skillIdx };
+          })
+        )
+          .filter((entry) => {
+            if (!entry.name || seen.has(entry.dedupeKey)) return false;
+            seen.add(entry.dedupeKey);
+            return true;
+          })
+          .map((entry) => ({
+            id: `sk_${api.id}_${entry.roleIdx}_${entry.skillIdx}_${entry.dedupeKey.replace(/\s+/g, '-')}`,
+            name: entry.name,
+            category: 'technical' as const,
+            level: 'intermediate' as const,
+          }));
+      })(),
     requiredRoles:
       fallback?.requiredRoles ??
       roles.map((r, idx) => ({

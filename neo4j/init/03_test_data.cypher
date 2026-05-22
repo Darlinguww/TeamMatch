@@ -51,9 +51,10 @@ WITH [
 UNWIND profiles AS profile
 MATCH (u:Usuario {userId: profile.userId})
 UNWIND profile.skills AS skillName
-MERGE (skill:Habilidad {normalizedName: toLower(skillName)})
-ON CREATE SET skill.name = skillName, skill.createdAt = datetime()
-SET skill.updatedAt = datetime()
+MERGE (skill:Habilidad {name: skillName})
+ON CREATE SET skill.normalizedName = toLower(skillName), skill.createdAt = datetime()
+SET skill.normalizedName = coalesce(skill.normalizedName, toLower(skillName)),
+    skill.updatedAt = datetime()
 MERGE (u)-[:TIENE_HABILIDAD]->(skill);
 
 WITH [

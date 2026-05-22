@@ -44,6 +44,41 @@ const DAY_ALIASES: Record<string, Weekday> = {
 const EXPLICIT_RANGE =
   /(\d{1,2})(?::(\d{2}))?\s*(?:-|a|to|hasta|until)\s*(\d{1,2})(?::(\d{2}))?/i;
 
+const TWELVE_HOUR_RANGE =
+  /(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)\s*(?:-|a|to|hasta|until)\s*(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)/i;
+
+function maskMeridiemDots(text: string): string {
+  return text
+    .replace(/(\d{1,2}:\d{2})\s*p\.?\s*m\.?/gi, '$1 pm')
+    .replace(/(\d{1,2}:\d{2})\s*a\.?\s*m\.?/gi, '$1 am');
+}
+
+function splitAvailabilitySegments(text: string): string[] {
+  return maskMeridiemDots(text)
+    .split(/[.;\n]+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function to24Hour(hour: string, minute: string | undefined, meridiem: string): string {
+  let h = Number(hour);
+  const m = minute === undefined ? 0 : Number(minute);
+  const normalizedMeridiem = meridiem.trim().toLowerCase();
+  const isPm = normalizedMeridiem.startsWith('p') || normalizedMeridiem === 'pm';
+
+  if (h < 1 || h > 12 || m < 0 || m > 59) {
+    return '';
+  }
+
+  if (h === 12) {
+    h = isPm ? 12 : 0;
+  } else if (isPm) {
+    h += 12;
+  }
+
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 function normalizeTime(hour: string, minute?: string): string {
   const h = Number(hour);
   const m = minute === undefined ? 0 : Number(minute);
@@ -131,6 +166,18 @@ function detectTimeBands(text: string): TimeBand[] {
     bands.push(TIME_BANDS.flexibleDay);
   }
 
+  if (/\b(?:media\s+jornada|part[-\s]?time|medio\s+tiempo)\b/i.test(t)) {
+    bands.push(TIME_BANDS.afternoon);
+  }
+
+  if (/\b(?:ma[nñ]anas?\s+muy\s+tempranas?|very\s+early\s+mornings?)\b/i.test(t)) {
+    bands.push({ start: '06:00', end: '10:00' });
+  }
+
+  if (/\b(?:remoto|remote|flexible|horarios?\s+flexibles?)\b/i.test(t)) {
+    bands.push(TIME_BANDS.flexibleDay);
+  }
+
   if (bands.length === 0) {
     bands.push(TIME_BANDS.flexibleDay);
   }
@@ -148,11 +195,45 @@ function dedupeBands(bands: TimeBand[]): TimeBand[] {
   });
 }
 
+function resolveDaysForSegment(segment: string, detected: Weekday[]): Weekday[] {
+  if (detected.length > 0) return detected;
+
+  const t = segment.toLowerCase();
+  if (/\b(?:media\s+jornada|part[-\s]?time|diarias?|habitualmente|entre\s+semana)\b/i.test(t)) {
+    return [...WEEKDAYS_WORK];
+  }
+
+  return detected;
+}
+
 function parseExplicitSegment(segment: string): { days: Weekday[]; slots: TimeSlotInput[] } | null {
+  const twelveHourMatch = TWELVE_HOUR_RANGE.exec(segment);
+  if (twelveHourMatch) {
+    const days = resolveDaysForSegment(segment, detectDays(segment));
+    if (days.length === 0) return null;
+
+    const start = to24Hour(twelveHourMatch[1], twelveHourMatch[2], twelveHourMatch[3]);
+    const end = to24Hour(twelveHourMatch[4], twelveHourMatch[5], twelveHourMatch[6]);
+    if (!start || !end || start >= end) return null;
+
+    return { days, slots: [{ start, end }] };
+  }
+
   const match = EXPLICIT_RANGE.exec(segment);
   if (!match) return null;
 
-  const days = detectDays(segment);
+  // Evita confundir "4 a 5 horas diarias" con un rango horario.
+  const durationMatch = /\b(\d{1,2})\s*a\s*(\d{1,2})\s*horas\b/i.exec(segment);
+  if (
+    durationMatch &&
+    match.index !== undefined &&
+    match.index >= durationMatch.index &&
+    match.index < durationMatch.index + durationMatch[0].length
+  ) {
+    return null;
+  }
+
+  const days = resolveDaysForSegment(segment, detectDays(segment));
   if (days.length === 0) return null;
 
   const slot = {
@@ -173,7 +254,7 @@ export function parseAvailabilityHeuristic(text: string): AvailabilityDayInput[]
   if (!trimmed) return [];
 
   const byDay = new Map<Weekday, TimeSlotInput[]>();
-  const segments = trimmed.split(/[.;\n]+/).map((s) => s.trim()).filter(Boolean);
+  const segments = splitAvailabilitySegments(trimmed);
 
   for (const segment of segments) {
     const explicit = parseExplicitSegment(segment);

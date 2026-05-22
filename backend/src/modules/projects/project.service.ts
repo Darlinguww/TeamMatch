@@ -57,7 +57,14 @@ export interface ProjectRepository {
   updateProject(
     userId: string,
     projectId: string,
-    input: { title: string; description: string; roles?: ProjectRoleInput[] }
+    input: {
+      title: string;
+      description: string;
+      roles?: ProjectRoleInput[];
+      categories?: string[];
+      difficulty?: 'easy' | 'medium' | 'hard';
+      estimatedDuration?: number;
+    }
   ): Promise<ProjectDetails>;
   findPhaseOneCandidates(userId: string, projectId: string): Promise<ProjectPhaseOneCandidate[] | null>;
   findPhaseTwoCandidates(userId: string, projectId: string, weights: ProjectMatchWeights): Promise<ProjectPhaseTwoCandidate[] | null>;

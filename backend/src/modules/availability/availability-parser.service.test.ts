@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AvailabilityParserService } from './availability-parser.service.js';
 import { ManualAvailabilityParser } from './manual-availability.parser.js';
+import { NaturalLanguageAvailabilityParser } from './natural-language-availability.parser.js';
 import { AvailabilityParser } from './types/availability-parser.types.js';
 
 class FailingAiParser implements AvailabilityParser {
@@ -59,7 +60,10 @@ describe('Availability parsing', () => {
   });
 
   it('hace fallback manual cuando Azure falla', async () => {
-    const service = new AvailabilityParserService(new FailingAiParser(), new ManualAvailabilityParser());
+    const service = new AvailabilityParserService(
+      new FailingAiParser(),
+      new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser())
+    );
 
     await expect(service.parse('viernes de 8 a 10')).resolves.toEqual({
       source: 'manual',
@@ -68,5 +72,18 @@ describe('Availability parsing', () => {
         timeSlots: [{ start: '08:00', end: '10:00' }]
       }]
     });
+  });
+
+  it('interpreta media jornada en tardes y fines de semana flexibles', async () => {
+    const parser = new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser());
+    const text =
+      'Franja de Media Jornada (Part-time): Disponibilidad de 4 a 5 horas diarias, habitualmente en las tardes (2:00 p.m. a 6:00 p.m.) o mañanas muy tempranas. ' +
+      'Fines de semana y Trabajo Remoto: Alta disposición para adelantar transcripciones con horarios flexibles.';
+
+    const result = await parser.parse(text);
+
+    expect(result.some((day) => day.day === 'monday' && day.timeSlots.some((s) => s.start === '14:00' && s.end === '18:00'))).toBe(true);
+    expect(result.some((day) => day.day === 'saturday')).toBe(true);
+    expect(result.some((day) => day.day === 'sunday')).toBe(true);
   });
 });

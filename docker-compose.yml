@@ -3,41 +3,40 @@ networks:
     driver: bridge
  
 volumes:
-  neo4j_data:
-  neo4j_logs:
+  # neo4j_data:
+  # neo4j_logs:
   backend_node_modules:
   ai_service_node_modules:
 
 services:
   # ─────────────────────────────────────────────
-  # NEO4J — Base de datos de grafos
+  # NEO4J — Local desactivado; backend usa Aura (.env)
+  # NEO4J_URI=neo4j+s://<INSTANCE_ID>.databases.neo4j.io
   # ─────────────────────────────────────────────
-  neo4j:
-    image: neo4j:5.26.0-community
-    container_name: teammatch-neo4j
-    ports:
-      - '7474:7474'   # Neo4j Browser (UI)
-      - '7687:7687'   # Bolt protocol (driver)
-    environment:
-      - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
-      # GDS queda desactivado por defecto en desarrollo para evitar arranques
-      # muy lentos o bloqueos de Neo4j en equipos con poca memoria.
-      - NEO4J_server_memory_heap_initial__size=256m
-      - NEO4J_server_memory_heap_max__size=768m
-      - NEO4J_server_memory_pagecache_size=256m
-    volumes:
-      - neo4j_data:/data
-      - neo4j_logs:/logs
-      - ./neo4j/init:/docker-entrypoint-initdb.d
-    networks:
-      - teammatch-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 60s
+  # neo4j:
+  #   image: neo4j:5.26.0-community
+  #   container_name: teammatch-neo4j
+  #   ports:
+  #     - '7474:7474'
+  #     - '7687:7687'
+  #   environment:
+  #     - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
+  #     - NEO4J_server_memory_heap_initial__size=256m
+  #     - NEO4J_server_memory_heap_max__size=768m
+  #     - NEO4J_server_memory_pagecache_size=256m
+  #   volumes:
+  #     - neo4j_data:/data
+  #     - neo4j_logs:/logs
+  #     - ./neo4j/init:/docker-entrypoint-initdb.d
+  #   networks:
+  #     - teammatch-net
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 12
+  #     start_period: 60s
  
   # ─────────────────────────────────────────────
   # FRONTEND — React + Vite + TypeScript
@@ -63,7 +62,7 @@ services:
     restart: unless-stopped
  
   # ─────────────────────────────────────────────
-  # BACKEND — Node.js + Express + TypeScript
+  # BACKEND — Node.js + Express + TypeScript (Neo4j Aura vía .env)
   # ─────────────────────────────────────────────
   backend:
     build:
@@ -72,22 +71,15 @@ services:
     container_name: teammatch-backend
     ports:
       - '3000:3000'
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=${NODE_ENV}
-      - PORT=${PORT}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-      - NEO4J_URI=${NEO4J_URI}
-      - NEO4J_USER=${NEO4J_USER}
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
-      - AI_SERVICE_URL=${AI_SERVICE_URL}
-      - MAX_LOGIN_ATTEMPTS=${MAX_LOGIN_ATTEMPTS}
-      - LOGIN_BLOCK_DURATION_MS=${LOGIN_BLOCK_DURATION_MS}
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${PORT:-3000}
+      - AI_SERVICE_URL=http://ai-service:3001
     volumes:
       - ./backend:/app
     depends_on:
-      neo4j:
-        condition: service_healthy
       ai-service:
         condition: service_started
     networks:
