@@ -17,6 +17,8 @@ function figmaAssetResolver() {
 }
 
 export default defineConfig({
+  // Carga VITE_* desde TeamMatch/.env (raíz del monorepo), no solo frontend/
+  envDir: path.resolve(__dirname, '..'),
   server: {
     host: '0.0.0.0',
     port: 5173

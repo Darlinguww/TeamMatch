@@ -545,7 +545,7 @@ export function TeamProposals({
       )}
 
       {loadError && !loading && proposals.length === 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-200">
           {loadError}
         </div>
       )}

@@ -11,6 +11,7 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { useAuth } from '../lib/authContext';
+import { skillLevelColors } from '../lib/badgeStyles';
 
 // ─────────────────────────────────────────────
 // Types
@@ -81,9 +82,9 @@ const LEVEL_LABELS: Record<SkillLevel, string> = {
 };
 
 const LEVEL_COLORS: Record<SkillLevel, string> = {
-  beginner: 'bg-blue-100 text-blue-700 border-blue-200',
-  intermediate: 'bg-amber-100 text-amber-700 border-amber-200',
-  advanced: 'bg-green-100 text-green-700 border-green-200',
+  beginner: skillLevelColors.beginner,
+  intermediate: skillLevelColors.intermediate,
+  advanced: skillLevelColors.advanced,
 };
 
 const STEPS = ['Bienvenida', 'Perfil', 'Habilidades', 'Disponibilidad', '¡Listo!'];
@@ -399,7 +400,7 @@ export function OnboardingWizard() {
               {([
                 { id: 'technical', label: 'Técnicas', icon: Code2 },
                 { id: 'soft', label: 'Blandas', icon: Heart },
-                { id: 'domain', label: 'Dominio', icon: Globe },
+                { id: 'domain', label: 'Área de conocimiento', icon: Globe },
               ] as { id: SkillCategory; label: string; icon: typeof Code2 }[]).map(cat => (
                 <button
                   key={cat.id}

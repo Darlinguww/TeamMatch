@@ -2,11 +2,13 @@ import { Outlet, NavLink, useNavigate } from 'react-router';
 import { Home, User, Briefcase, Users, MessageSquare, Network, LogOut, Settings, Bell } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useSettings } from '../lib/settingsContext';
+import { useUnreadNotifications } from '../lib/useUnreadNotifications';
 import { cn } from './ui/utils';
 
 export function Layout() {
   const { user, logout } = useAuth();
   const { settings } = useSettings();
+  const { unreadCount } = useUnreadNotifications();
   const navigate = useNavigate();
   const compact = settings.experience.compactLayout;
 
@@ -99,7 +101,14 @@ export function Layout() {
                     }`
                   }
                 >
-                  <Icon className="h-4 w-4" />
+                  <span className="relative inline-flex">
+                    <Icon className="h-4 w-4" />
+                    {item.to === '/notifications' && unreadCount > 0 && (
+                      <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </span>
                   <span>{item.label}</span>
                 </NavLink>
               );

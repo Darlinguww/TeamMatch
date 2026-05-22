@@ -19,6 +19,7 @@ import { useAuth } from '../lib/authContext';
 import { isApiModeEnabled, mapApiProjectToUi, matchmakingApi, projectsApi } from '../lib/projectApi';
 import { useSettings } from '../lib/settingsContext';
 import { ROLE_SUGGESTIONS, SKILL_SUGGESTIONS } from '../lib/skillCatalog';
+import { difficultyColors, statusColors } from '../lib/badgeStyles';
 
 const CATEGORIES = [
   'Web Platform', 'Mobile App', 'AI/ML', 'Data Science',
@@ -46,17 +47,7 @@ interface NewProjectForm {
 
 // ─── diff / label maps ───────────────────────────────────────────────────────
 
-const difficultyColors: Record<string, string> = {
-  easy:   'bg-green-100 text-green-700',
-  medium: 'bg-amber-100 text-amber-700',
-  hard:   'bg-red-100 text-red-700',
-};
 const difficultyLabels: Record<string, string> = { easy: 'Fácil', medium: 'Medio', hard: 'Difícil' };
-const statusColors: Record<string, string> = {
-  open:        'bg-green-100 text-green-700',
-  'in-progress': 'bg-blue-100 text-blue-700',
-  completed:   'bg-gray-100 text-gray-700',
-};
 const statusLabels: Record<string, string> = {
   open: 'Abierto', 'in-progress': 'En Progreso', completed: 'Completado',
 };

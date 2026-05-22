@@ -11,15 +11,17 @@ import { type Skill } from "../lib/mockData";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { useAuth } from "../lib/authContext";
-import { profileApi, suggestedToUiSkills } from "../lib/profileApi";
-import { isApiModeEnabled } from "../lib/projectApi";
+import { profileApi } from "../lib/profileApi";
+import { parseAvailabilityFromInput, suggestSkillsFromInput } from "../lib/aiFeatures";
 import { SKILL_SUGGESTIONS } from "../lib/skillCatalog";
+import { skillCategoryColors } from "../lib/badgeStyles";
+import { toast } from "sonner";
 
 const skillCategories = {
-  technical: { label: "Técnicas",  color: "bg-blue-100 text-blue-700"    },
-  soft:      { label: "Blandas",   color: "bg-green-100 text-green-700"  },
-  language:  { label: "Idiomas",   color: "bg-purple-100 text-purple-700"},
-  domain:    { label: "Dominio",   color: "bg-amber-100 text-amber-700"  },
+  technical: { label: "Técnicas",  color: skillCategoryColors.technical },
+  soft:      { label: "Blandas",   color: skillCategoryColors.soft      },
+  language:  { label: "Idiomas",   color: skillCategoryColors.language},
+  domain:    { label: "Área de conocimiento", color: skillCategoryColors.domain },
 };
 
 const skillLevels = {
@@ -59,6 +61,8 @@ export function Profile() {
   const [isParsingAvailability, setIsParsingAvailability] = useState(false);
   const [availabilityParseError, setAvailabilityParseError] = useState<string | null>(null);
   const [aiSkillError, setAiSkillError] = useState<string | null>(null);
+  const [isAddInterestOpen, setIsAddInterestOpen] = useState(false);
+  const [newInterest, setNewInterest] = useState("");
 
   const normalizeSkillName = (name: string) => name.trim().toLowerCase();
 
@@ -71,31 +75,8 @@ export function Profile() {
   };
 
   const processSkillsWithAi = async (text: string, file?: File): Promise<Skill[]> => {
-    if (!isApiModeEnabled()) {
-      throw new Error(
-        'El análisis con IA requiere modo API (VITE_USE_API_AUTH=true) y backend con AI_SERVICE_URL configurado.'
-      );
-    }
-
-    if (file) {
-      const fromFile = await profileApi.suggestSkillsFromFile(file, text);
-      if (fromFile.length === 0) {
-        throw new Error('No se detectaron habilidades en el archivo.');
-      }
-      return suggestedToUiSkills(fromFile);
-    }
-
-    const trimmed = text.trim();
-    if (!trimmed) {
-      throw new Error('Escribe o sube contenido para analizar habilidades.');
-    }
-
-    const res = await profileApi.suggestSkillsFromText(trimmed);
-    const payloads = res.skills ?? res.suggestions.map((name) => ({ name }));
-    if (payloads.length === 0) {
-      throw new Error('No se detectaron habilidades en el texto.');
-    }
-    return suggestedToUiSkills(payloads);
+    const { skills } = await suggestSkillsFromInput(text, file);
+    return skills;
   };
 
   const handleAddPreferredTime = () => {
@@ -116,11 +97,6 @@ export function Profile() {
   };
 
   const handleParseAvailabilityText = async () => {
-    if (!isApiModeEnabled()) {
-      setAvailabilityParseError('El análisis de disponibilidad requiere modo API habilitado.');
-      return;
-    }
-
     if (!availabilityParseInput.trim()) {
       setAvailabilityParseError('Ingresa una descripción de tu disponibilidad para analizarla.');
       return;
@@ -131,7 +107,7 @@ export function Profile() {
     setParsedAvailability(null);
 
     try {
-      const result = await profileApi.parseAvailability(availabilityParseInput.trim());
+      const result = await parseAvailabilityFromInput(availabilityParseInput.trim());
       setParsedAvailability(result.availability);
 
       if (result.availability.length > 0) {
@@ -145,6 +121,11 @@ export function Profile() {
             preferredTimes: Array.from(new Set([...p.availability.preferredTimes, ...formatted])),
           }
         } : p);
+        toast.success('Disponibilidad analizada', {
+          description: result.source === 'heuristic'
+            ? 'Se interpretó localmente. Guarda el perfil para conservar los cambios.'
+            : 'Franjas horarias agregadas a tu perfil.',
+        });
       }
     } catch (error) {
       setAvailabilityParseError(error instanceof Error ? error.message : 'No se pudo analizar la disponibilidad');
@@ -201,17 +182,53 @@ export function Profile() {
   };
 
   const handleAddSkill = () => {
+    if (!newSkill.name?.trim()) {
+      toast.error("Ingresa el nombre de la habilidad");
+      return;
+    }
     if (newSkill.name && newSkill.category && newSkill.level) {
+      const category = newSkill.category as Skill["category"];
       const skill: Skill = {
         id: `s${Date.now()}`,
         name: newSkill.name.trim(),
-        category: newSkill.category as Skill["category"],
+        category,
         level: newSkill.level as Skill["level"],
       };
+      const exists = local.skills.some(
+        (s) => s.name.trim().toLowerCase() === skill.name.toLowerCase()
+      );
+      if (exists) {
+        toast.error("Esta habilidad ya está en tu perfil");
+        return;
+      }
       addLocalSkill(skill);
       setNewSkill({ name: "", category: "technical", level: "beginner" });
       setIsAddSkillOpen(false);
+      toast.success(
+        category === "domain"
+          ? "Área de conocimiento agregada"
+          : "Habilidad agregada",
+        { description: "Recuerda guardar los cambios del perfil." }
+      );
     }
+  };
+
+  const handleAddInterestSubmit = () => {
+    const value = newInterest.trim();
+    if (!value) {
+      toast.error("Ingresa un área de interés");
+      return;
+    }
+    if (local.interests.includes(value)) {
+      toast.error("Este interés ya está registrado");
+      return;
+    }
+    handleAddInterest(value);
+    setNewInterest("");
+    setIsAddInterestOpen(false);
+    toast.success("Interés agregado", {
+      description: "Recuerda guardar los cambios del perfil.",
+    });
   };
 
   const handleRemoveSkill    = (id: string) => setLocal(p => p ? { ...p, skills: p.skills.filter(s => s.id !== id) } : p);
@@ -227,10 +244,13 @@ export function Profile() {
         extracted.forEach(addLocalSkill);
         setSkillText("");
         setIsAddSkillOpen(false);
+        toast.success(`${extracted.length} habilidad${extracted.length === 1 ? '' : 'es'} detectada${extracted.length === 1 ? '' : 's'}`, {
+          description: 'Recuerda guardar los cambios del perfil.',
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'No se pudo analizar el texto con IA.';
         setAiSkillError(message);
-        alert(message);
+        toast.error(message);
       } finally {
         setShowAIProcess(false);
       }
@@ -242,7 +262,7 @@ export function Profile() {
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('El archivo supera el límite de 5 MB.');
+      toast.error('El archivo supera el límite de 5 MB.');
       return;
     }
 
@@ -256,10 +276,13 @@ export function Profile() {
         const extracted = await processSkillsWithAi(text, isPdf ? file : undefined);
         extracted.forEach(addLocalSkill);
         setIsAddSkillOpen(false);
+        toast.success(`${extracted.length} habilidad${extracted.length === 1 ? '' : 'es'} detectada${extracted.length === 1 ? '' : 's'}`, {
+          description: 'Recuerda guardar los cambios del perfil.',
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al procesar el archivo.';
         setAiSkillError(message);
-        alert(message);
+        toast.error(message);
       } finally {
         setShowAIProcess(false);
         e.target.value = '';
@@ -294,13 +317,13 @@ export function Profile() {
 
       {/* ── Incomplete nudge ── */}
       {isProfileEmpty && !isEditing && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center gap-3">
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-4 flex items-center gap-3">
           <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-800">Tu perfil está incompleto</p>
-            <p className="text-xs text-amber-700">Agrega una descripción y habilidades para que el motor de IA te encuentre proyectos.</p>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Tu perfil está incompleto</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300/90">Agrega una descripción y habilidades para que el motor de IA te encuentre proyectos.</p>
           </div>
-          <Button size="sm" variant="outline" onClick={() => setIsEditing(true)} className="shrink-0 border-amber-300 text-amber-700 hover:bg-amber-100">
+          <Button size="sm" variant="outline" onClick={() => setIsEditing(true)} className="shrink-0 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50">
             Completar ahora
           </Button>
         </div>
@@ -322,7 +345,7 @@ export function Profile() {
               </div>
               {isEditing && (
                 <>
-                  <label htmlFor="avatar-upload" className="absolute bottom-0 right-0 bg-gray-700 p-1.5 rounded-full shadow cursor-pointer hover:bg-gray-600 transition-colors" title="Cambiar foto">
+                  <label htmlFor="avatar-upload" className="absolute bottom-0 right-0 bg-primary p-1.5 rounded-full shadow cursor-pointer hover:bg-primary/90 transition-colors" title="Cambiar foto">
                     <Edit2 className="h-3.5 w-3.5 text-white" />
                   </label>
                   <input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
@@ -350,7 +373,7 @@ export function Profile() {
                   <p className="text-muted-foreground text-sm">{authUser.email}</p>
                 </div>
                 {(authUser.rating ?? 0) > 0 && (
-                  <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg ml-4 shrink-0">
+                  <div className="flex items-center gap-1 bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 px-3 py-1.5 rounded-lg ml-4 shrink-0">
                     <Star className="h-4 w-4 fill-current" />
                     <span className="font-medium">{authUser.rating}/5</span>
                   </div>
@@ -401,7 +424,7 @@ export function Profile() {
           <p className="text-sm text-muted-foreground mb-1">Rating Promedio</p>
           {(authUser.rating ?? 0) > 0 ? (
             <><p className="text-3xl font-bold">{authUser.rating}/5</p>
-            <div className="flex mt-2">{[1,2,3,4,5].map(s => <Star key={s} className={`h-4 w-4 ${s <= (authUser.rating ?? 0) ? "fill-amber-400 text-amber-400" : "text-gray-300"}`} />)}</div></>
+            <div className="flex mt-2">{[1,2,3,4,5].map(s => <Star key={s} className={`h-4 w-4 ${s <= (authUser.rating ?? 0) ? "fill-amber-400 text-amber-400" : "text-muted-foreground/40"}`} />)}</div></>
           ) : (
             <><p className="text-3xl font-bold text-muted-foreground">—</p><p className="text-xs text-muted-foreground mt-2">Sin evaluaciones aún</p></>
           )}
@@ -427,8 +450,10 @@ export function Profile() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Agregar Nueva Habilidad</DialogTitle>
-                    <DialogDescription>Ingresa tus habilidades en lenguaje natural o carga tu CV</DialogDescription>
+                    <DialogTitle>Agregar habilidad o área de conocimiento</DialogTitle>
+                    <DialogDescription>
+                      Agrega competencias técnicas, blandas, idiomas o áreas de dominio. Puedes usar texto libre, CV o entrada manual.
+                    </DialogDescription>
                   </DialogHeader>
                   {showAIProcess ? (
                     <div className="py-8 text-center">
@@ -481,7 +506,7 @@ export function Profile() {
                                 <SelectItem value="technical">Técnica</SelectItem>
                                 <SelectItem value="soft">Blanda</SelectItem>
                                 <SelectItem value="language">Idioma</SelectItem>
-                                <SelectItem value="domain">Dominio</SelectItem>
+                                <SelectItem value="domain">Área de conocimiento</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -523,7 +548,7 @@ export function Profile() {
                   <h4 className="text-sm font-medium mb-3">{skillCategories[cat as keyof typeof skillCategories]?.label ?? cat}</h4>
                   <div className="flex flex-wrap gap-2">
                     {skills.map(skill => (
-                      <div key={skill.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${skillCategories[skill.category]?.color ?? ""}`}>
+                      <div key={skill.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${skillCategories[skill.category]?.color ?? "border-border bg-muted"}`}>
                         <div>
                           <p className="font-medium text-sm">{skill.name}</p>
                           <div className="flex gap-0.5 mt-1">
@@ -545,21 +570,59 @@ export function Profile() {
 
       {/* ── Interests ── */}
       <Card>
-        <CardHeader><CardTitle>Intereses</CardTitle><CardDescription>Áreas y temas que te apasionan</CardDescription></CardHeader>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Intereses</CardTitle>
+              <CardDescription>Áreas y temas que te apasionan</CardDescription>
+            </div>
+            {isEditing && (
+              <Dialog open={isAddInterestOpen} onOpenChange={setIsAddInterestOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Plus className="h-3 w-3 mr-1" />Agregar
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Agregar interés</DialogTitle>
+                    <DialogDescription>
+                      Temas o sectores que te interesan para encontrar proyectos afines.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="space-y-2">
+                      <Label>Área de interés</Label>
+                      <Input
+                        placeholder="Ej: Inteligencia artificial, emprendimiento, salud digital"
+                        value={newInterest}
+                        onChange={(e) => setNewInterest(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddInterestSubmit();
+                          }
+                        }}
+                      />
+                    </div>
+                    <Button className="w-full" onClick={handleAddInterestSubmit}>
+                      Agregar interés
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
+        </CardHeader>
         <CardContent>
           {local.interests.length === 0 && !isEditing
             ? <p className="text-sm text-muted-foreground italic">Sin intereses registrados.</p>
             : <div className="flex flex-wrap gap-2">
                 {local.interests.map(i => (
-                  <Badge key={i} variant="outline" className="px-3 py-1.5">{i}
-                    {isEditing && <button type="button" onClick={() => handleRemoveInterest(i)} className="ml-2 hover:bg-black/10 rounded"><X className="h-3 w-3" /></button>}
+                  <Badge key={i} variant="secondary" className="px-3 py-1.5">{i}
+                    {isEditing && <button type="button" onClick={() => handleRemoveInterest(i)} className="ml-2 hover:bg-foreground/10 rounded"><X className="h-3 w-3" /></button>}
                   </Badge>
                 ))}
-                {isEditing && (
-                  <Button size="sm" variant="outline" onClick={() => { const v = prompt("Nuevo interés:"); if (v) handleAddInterest(v.trim()); }}>
-                    <Plus className="h-3 w-3 mr-1" />Agregar
-                  </Button>
-                )}
               </div>}
         </CardContent>
       </Card>
@@ -605,7 +668,7 @@ export function Profile() {
                       <p className="text-sm text-muted-foreground italic">Agrega tus franjas horarias preferidas.</p>
                     )}
                   </div>
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4">
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <div>
                         <p className="text-sm font-semibold">Analiza tu disponibilidad</p>
@@ -629,10 +692,10 @@ export function Profile() {
                     )}
                     {parsedAvailability && parsedAvailability.length > 0 && (
                       <div className="mt-3 space-y-2">
-                        <p className="text-xs font-semibold text-slate-700">Resultados detectados:</p>
-                        <div className="space-y-1 text-sm text-slate-700">
+                        <p className="text-xs font-semibold text-foreground">Resultados detectados:</p>
+                        <div className="space-y-1 text-sm text-muted-foreground">
                           {parsedAvailability.map((entry) => (
-                            <div key={entry.day} className="rounded-lg bg-white border border-slate-200 p-2">
+                            <div key={entry.day} className="rounded-lg bg-card border border-border p-2">
                               <p className="font-medium">{entry.day}</p>
                               <p>{entry.timeSlots.map((slot) => `${slot.start}-${slot.end}`).join(', ')}</p>
                             </div>

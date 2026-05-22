@@ -1,4 +1,4 @@
-import { ApiError, getStoredToken } from './apiClient';
+import { ApiError, apiRequest, getStoredToken } from './apiClient';
 import type { Project, Task, TaskStatus } from './mockData';
 import { computeProjectTaskProgress, type ProjectTaskProgress } from './projectProgress';
 import { apiTaskStatusToUi, uiTaskStatusToApiCrud, uiTaskStatusToWorkflowPatch } from './taskStatus';
@@ -394,17 +394,17 @@ export interface UserNotification {
 }
 
 export const notificationsApi = {
-  list: () => resourceRequest<{ notifications: UserNotification[] }>('/api/notifications'),
+  list: () => apiRequest<{ notifications: UserNotification[] }>('/notifications'),
   markAsRead: (notificationId: string) =>
-    resourceRequest<{ message: string }>(`/api/notifications/${notificationId}/read`, {
+    apiRequest<{ message: string }>(`/notifications/${notificationId}/read`, {
       method: 'PATCH',
     }),
   respond: (notificationId: string, decision: 'approved' | 'rejected') =>
-    resourceRequest<{ requestId: string; status: string }>(
-      `/api/notifications/${encodeURIComponent(notificationId)}/respond`,
+    apiRequest<{ requestId: string; status: string }>(
+      `/notifications/${encodeURIComponent(notificationId)}/respond`,
       {
         method: 'POST',
-        body: JSON.stringify({ decision }),
+        body: { decision },
       }
     ),
 };

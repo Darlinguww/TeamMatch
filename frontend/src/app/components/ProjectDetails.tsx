@@ -38,6 +38,8 @@ import {
 import { useAuth } from '../lib/authContext';
 import { computeMemberAffinityScore } from '../lib/affinityScore';
 import { AffinityScoreBadge } from './AffinityScore';
+import { toast } from 'sonner';
+import { difficultyColors } from '../lib/badgeStyles';
 
 interface TaskForm {
   title: string;
@@ -368,11 +370,14 @@ export function ProjectDetails() {
     try {
       await projectsApi.requestJoin(projectId);
       setPendingJoin(true);
-      alert('Solicitud enviada. El líder del proyecto la revisará en Alertas.');
+      window.dispatchEvent(new CustomEvent('teammatch:notifications-changed'));
+      toast.success('Solicitud enviada', {
+        description: 'El líder del proyecto la revisará en Alertas.',
+      });
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : 'No se pudo enviar la solicitud.';
-      alert(message);
+      toast.error(message);
     } finally {
       setIsJoining(false);
     }
@@ -385,11 +390,14 @@ export function ProjectDetails() {
     try {
       await projectsApi.applyToRole(projectId, roleName);
       setPendingRoles((prev) => [...prev, roleName]);
-      alert(`Postulación al rol "${roleName}" enviada. El líder la revisará en Alertas.`);
+      window.dispatchEvent(new CustomEvent('teammatch:notifications-changed'));
+      toast.success('Postulación enviada', {
+        description: `Tu solicitud para el rol "${roleName}" será revisada en Alertas.`,
+      });
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : 'No se pudo enviar la postulación.';
-      alert(message);
+      toast.error(message);
     } finally {
       setApplyingRole(null);
     }
@@ -771,11 +779,11 @@ export function ProjectDetails() {
     void persistKanbanState({ sprintActive, currentSprint: safe });
   };
 
-  const difficultyColors = {
-    easy: 'bg-green-100 text-green-700',
-    medium: 'bg-amber-100 text-amber-700',
-    hard: 'bg-red-100 text-red-700',
-  };
+  const showJoinCta =
+    shouldLoadProjectFromApi(currentProject.id) &&
+    !isProjectMember &&
+    currentProject.status === 'open' &&
+    spotsLeft > 0;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -849,10 +857,28 @@ export function ProjectDetails() {
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              {currentProject.status === 'open' && !isUserInTeam && spotsLeft > 0 && (
-                <Button size="lg" className="w-full sm:w-auto">
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Unirme al Proyecto
+              {showJoinCta && (
+                <Button
+                  type="button"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  onClick={handleRequestJoin}
+                  disabled={isJoining || pendingJoin}
+                  variant={pendingJoin ? 'outline' : 'default'}
+                >
+                  {isJoining ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Enviando…
+                    </>
+                  ) : pendingJoin ? (
+                    'Solicitud pendiente'
+                  ) : (
+                    <>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Solicitar unirme
+                    </>
+                  )}
                 </Button>
               )}
               {isUserInTeam && !isProjectLeader && (
@@ -1057,9 +1083,18 @@ export function ProjectDetails() {
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground">
                 <p className="mb-4">El tablero Kanban solo está disponible para miembros del equipo.</p>
-                <Button type="button" onClick={handleRequestJoin} disabled={isJoining || pendingJoin}>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  {pendingJoin ? 'Solicitud pendiente' : 'Solicitar unirme'}
+                <Button type="button" onClick={handleRequestJoin} disabled={isJoining || pendingJoin} variant={pendingJoin ? 'outline' : 'default'}>
+                  {isJoining ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Enviando…
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      {pendingJoin ? 'Solicitud pendiente' : 'Solicitar unirme'}
+                    </>
+                  )}
                 </Button>
               </CardContent>
             </Card>
