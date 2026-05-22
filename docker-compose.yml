@@ -1,56 +1,44 @@
 networks:
   teammatch-net:
     driver: bridge
- 
+
 volumes:
   neo4j_data:
   neo4j_logs:
-  neo4j_plugins:
   backend_node_modules:
   ai_service_node_modules:
 
 services:
   # ─────────────────────────────────────────────
-  # NEO4J — Base de datos de grafos
+  # NEO4J — DESACTIVADO (MIGRADO A NEO4J AURA NUBE)
   # ─────────────────────────────────────────────
-  neo4j:
-    image: neo4j:5.26.0-community
-    container_name: teammatch-neo4j
-    ports:
-      - '7474:7474'   # Neo4j Browser (UI)
-      - '7687:7687'   # Bolt protocol (driver)
-    environment:
-      - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
-      # Credenciales para healthcheck (no usar prefijo NEO4J_ — Neo4j 5 las mapea a config inválida)
-      - TEAMMATCH_NEO4J_USER=${NEO4J_USER}
-      - TEAMMATCH_NEO4J_PASSWORD=${NEO4J_PASSWORD}
-      # Plugins: formato JSON aceptado por neo4j-admin / docker entrypoint
-      - 'NEO4J_PLUGINS=["graph-data-science","apoc"]'
-      - NEO4J_dbms_security_procedures_unrestricted=gds.*,apoc.*
-      - NEO4J_dbms_security_procedures_allowlist=gds.*,apoc.*
-      # Memoria (host ~4GB dev): heap ~2GB + pagecache 512m para ~1k nodos / ~50k rels
-      - NEO4J_server_memory_heap_initial__size=512m
-      - NEO4J_server_memory_heap_max__size=1536m
-      - NEO4J_server_memory_pagecache_size=512m
-    volumes:
-      - neo4j_data:/data
-      - neo4j_logs:/logs
-      - neo4j_plugins:/plugins
-      - ./neo4j/init:/docker-entrypoint-initdb.d
-    networks:
-      - teammatch-net
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'cypher-shell -u "$$TEAMMATCH_NEO4J_USER" -p "$$TEAMMATCH_NEO4J_PASSWORD" "RETURN 1"',
-        ]
-      interval: 10s
-      timeout: 15s
-      retries: 18
-      start_period: 180s
- 
+  # neo4j:
+  #   image: neo4j:5.26.0-community
+  #   container_name: teammatch-neo4j
+  #   ports:
+  #     - '7474:7474'   # Neo4j Browser (UI)
+  #     - '7687:7687'   # Bolt protocol (driver)
+  #   environment:
+  #     - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
+  #     # GDS queda desactivado por defecto en desarrollo para evitar arranques
+  #     # muy lentos o bloqueos de Neo4j en equipos con poca memoria.
+  #     - NEO4J_server_memory_heap_initial__size=256m
+  #     - NEO4J_server_memory_heap_max__size=768m
+  #     - NEO4J_server_memory_pagecache_size=256m
+  #   volumes:
+  #     - neo4j_data:/data
+  #     - neo4j_logs:/logs
+  #     - ./neo4j/init:/docker-entrypoint-initdb.d
+  #   networks:
+  #     - teammatch-net
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 12
+  #     start_period: 60s
+
   # ─────────────────────────────────────────────
   # FRONTEND — React + Vite + TypeScript
   # ─────────────────────────────────────────────
@@ -63,6 +51,8 @@ services:
       - '5173:5173'
     environment:
       - VITE_API_URL=${VITE_API_URL}
+      - VITE_USE_API_AUTH=${VITE_USE_API_AUTH}
+      - VITE_AI_SERVICE_URL=${VITE_AI_SERVICE_URL}
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -71,7 +61,7 @@ services:
     networks:
       - teammatch-net
     restart: unless-stopped
- 
+
   # ─────────────────────────────────────────────
   # BACKEND — Node.js + Express + TypeScript
   # ─────────────────────────────────────────────
@@ -87,7 +77,6 @@ services:
       - PORT=${PORT}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:5173}
       - NEO4J_URI=${NEO4J_URI}
       - NEO4J_USER=${NEO4J_USER}
       - NEO4J_PASSWORD=${NEO4J_PASSWORD}
@@ -97,28 +86,29 @@ services:
     volumes:
       - ./backend:/app
     depends_on:
-      neo4j:
-        condition: service_healthy
       ai-service:
         condition: service_started
     networks:
       - teammatch-net
     restart: unless-stopped
- 
+
   # ─────────────────────────────────────────────
-  # AI SERVICE — Microservicio Gemini (normalización + explicaciones)
+  # AI SERVICE — Azure OpenAI gpt-4.1-mini (extracción + matchmaking)
   # ─────────────────────────────────────────────
   ai-service:
     build:
       context: ./ai-service
       dockerfile: Dockerfile
     container_name: teammatch-ai
+    command: npm run dev
     ports:
       - '3001:3001'
     environment:
       - PORT=3001
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
       - PROCESSING_TIMEOUT_MS=${PROCESSING_TIMEOUT_MS}
       - NODE_ENV=${NODE_ENV}
@@ -128,4 +118,3 @@ services:
     networks:
       - teammatch-net
     restart: unless-stopped
-
