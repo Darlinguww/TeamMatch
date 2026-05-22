@@ -284,7 +284,17 @@ export const projectsApi = {
     );
     return normalizeApiProject(payload);
   },
-  update: async (projectId: string, body: { title?: string; description?: string; roles?: ApiProjectRole[] }) => {
+  update: async (
+    projectId: string,
+    body: {
+      title?: string;
+      description?: string;
+      roles?: ApiProjectRole[];
+      categories?: string[];
+      difficulty?: 'easy' | 'medium' | 'hard';
+      estimatedDuration?: number;
+    }
+  ) => {
     const normalizedId = encodeURIComponent(projectId.trim());
     const payload = await resourceRequest<{ projectId: string; project?: ApiProjectDetails & { projectId?: string } }>(
       `/projects/${normalizedId}`,

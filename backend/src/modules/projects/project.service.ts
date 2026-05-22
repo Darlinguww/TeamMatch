@@ -154,7 +154,14 @@ export class ProjectService {
   public async updateProject(
     userId: string,
     projectId: string,
-    input: { title?: unknown; description?: unknown; roles?: unknown }
+    input: {
+      title?: unknown;
+      description?: unknown;
+      roles?: unknown;
+      categories?: unknown;
+      difficulty?: unknown;
+      estimatedDuration?: unknown;
+    }
   ): Promise<ProjectDetails> {
     const normalizedProjectId = projectId.trim();
     const currentProject = await this.repository.findProjectForUser(userId, normalizedProjectId);
@@ -183,7 +190,29 @@ export class ProjectService {
       roles = this.parseRoles(input.roles);
     }
 
-    return this.repository.updateProject(userId, normalizedProjectId, { title, description, roles });
+    let categories: string[] | undefined;
+    if (input.categories !== undefined && input.categories !== null) {
+      categories = this.parseCategories(input.categories);
+    }
+
+    let difficulty: 'easy' | 'medium' | 'hard' | undefined;
+    if (input.difficulty !== undefined && input.difficulty !== null && input.difficulty !== '') {
+      difficulty = this.parseDifficulty(input.difficulty);
+    }
+
+    let estimatedDuration: number | undefined;
+    if (input.estimatedDuration !== undefined && input.estimatedDuration !== null && input.estimatedDuration !== '') {
+      estimatedDuration = this.parseEstimatedDuration(input.estimatedDuration);
+    }
+
+    return this.repository.updateProject(userId, normalizedProjectId, {
+      title,
+      description,
+      roles,
+      categories,
+      difficulty,
+      estimatedDuration,
+    });
   }
 
   public async updateProjectKanban(

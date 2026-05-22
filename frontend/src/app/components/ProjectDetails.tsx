@@ -13,9 +13,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { 
   ArrowLeft, Users, Clock, Target, Sparkles,
-  UserPlus, Star, Calendar, CheckCircle2, Columns3, Plus, Zap, Loader2
+  UserPlus, Star, Calendar, CheckCircle2, Columns3, Plus, Zap, Loader2, X
 } from 'lucide-react';
-import { mockProjects, mockUsers, mockTeamMembers, mockTasks, type Project, type Task, type TaskStatus } from '../lib/mockData';
+import { mockProjects, mockUsers, mockTeamMembers, mockTasks, withProjectCategories, type Project, type Task, type TaskStatus } from '../lib/mockData';
+import {
+  normalizeProjectCategories,
+  normalizeProjectCategory,
+  PROJECT_CATEGORY_SUGGESTIONS,
+} from '../lib/projectCategories';
 import { TeamProposals, type TeamProposal } from './TeamProposals';
 import { KanbanBoard } from './KanbanBoard';
 import { ApiError, getStoredToken } from '../lib/apiClient';
@@ -54,7 +59,7 @@ interface TaskForm {
 interface ProjectEditForm {
   name: string;
   description: string;
-  category: string;
+  categories: string[];
   difficulty: 'easy' | 'medium' | 'hard';
   teamSize: number;
   estimatedDuration: number;
@@ -83,11 +88,12 @@ export function ProjectDetails() {
   const [projectForm, setProjectForm] = useState<ProjectEditForm>({
     name: project?.name ?? '',
     description: project?.description ?? '',
-    category: project?.categories?.join(', ') ?? project?.category ?? '',
+    categories: normalizeProjectCategories(project?.categories ?? []),
     difficulty: project?.difficulty ?? 'medium',
     teamSize: project?.teamSize ?? 3,
     estimatedDuration: project?.estimatedDuration ?? 4,
   });
+  const [categoryInput, setCategoryInput] = useState('');
   const [sprintActive, setSprintActive] = useState(false);
   const [currentSprint, setCurrentSprint] = useState(1);
   const [leaderUser, setLeaderUser] = useState<User | null>(null);
@@ -115,11 +121,12 @@ export function ProjectDetails() {
     setProjectForm({
       name: source.name,
       description: source.description,
-      category: source.categories.join(', '),
+      categories: normalizeProjectCategories(source.categories ?? []),
       difficulty: source.difficulty,
       teamSize: source.teamSize,
       estimatedDuration: source.estimatedDuration,
     });
+    setCategoryInput('');
     setSprintActive(false);
   };
 
@@ -187,7 +194,7 @@ export function ProjectDetails() {
         const team = await teamsApi.getComposition(projectId).catch(() => null);
         if (cancelled) return;
 
-        const mapped = mapApiProjectToUi(apiProject);
+        const mapped = withProjectCategories(mapApiProjectToUi(apiProject));
         setEditableProject(mapped);
         const tasks = apiTasks.map((t) => mapApiTaskToUi(t, projectId));
         setProjectTasks(tasks);
@@ -257,13 +264,14 @@ export function ProjectDetails() {
           );
         }
         setProjectForm({
-          name: apiProject.title,
-          description: apiProject.description || apiProject.summary,
-          category: 'Web Platform',
-          difficulty: 'medium',
-          teamSize: Math.max(apiProject.roles.reduce((sum, role) => sum + (role.headcount ?? 1), 0) + 1, 1),
-          estimatedDuration: 4,
+          name: mapped.name,
+          description: mapped.description,
+          categories: normalizeProjectCategories(mapped.categories),
+          difficulty: mapped.difficulty,
+          teamSize: mapped.teamSize,
+          estimatedDuration: mapped.estimatedDuration,
         });
+        setCategoryInput('');
         setLoadError(null);
       } catch (err) {
         const isNotFound =
@@ -336,8 +344,8 @@ export function ProjectDetails() {
     );
   }
 
-  const currentProject = editableProject ?? project;
-  if (!currentProject) return null;
+  if (!editableProject && !project) return null;
+  const currentProject = withProjectCategories(editableProject ?? project!);
   const leader =
     leaderUser ??
     mockUsers.find((u) => u.id === currentProject.leaderId) ??
@@ -687,15 +695,33 @@ export function ProjectDetails() {
     }
   };
 
+  const addEditCategory = (name: string) => {
+    const normalized = normalizeProjectCategory(name);
+    if (!normalized) return;
+    setProjectForm((f) => ({
+      ...f,
+      categories: normalizeProjectCategories([...(f.categories ?? []), normalized]),
+    }));
+    setCategoryInput('');
+  };
+
+  const removeEditCategory = (name: string) => {
+    setProjectForm((f) => ({
+      ...f,
+      categories: (f.categories ?? []).filter((c) => c !== name),
+    }));
+  };
+
   const openEditProjectModal = () => {
     setProjectForm({
       name: currentProject.name,
       description: currentProject.description,
-      category: currentProject.category,
+      categories: normalizeProjectCategories(currentProject.categories ?? []),
       difficulty: currentProject.difficulty,
       teamSize: currentProject.teamSize,
       estimatedDuration: currentProject.estimatedDuration,
     });
+    setCategoryInput('');
     setEditProjectOpen(true);
   };
 
@@ -704,19 +730,21 @@ export function ProjectDetails() {
 
     const trimmedName = projectForm.name.trim();
     const trimmedDescription = projectForm.description.trim();
-    if (!trimmedName) return;
+    const categories = normalizeProjectCategories(projectForm.categories ?? []);
+    if (!trimmedName || categories.length === 0) return;
 
     const localUpdates = {
       name: trimmedName,
       description: trimmedDescription,
-      category: projectForm.category,
+      categories,
+      category: categories[0],
       difficulty: projectForm.difficulty,
       teamSize: projectForm.teamSize,
       estimatedDuration: projectForm.estimatedDuration,
     };
 
     if (!shouldLoadProjectFromApi(editableProject.id)) {
-      setEditableProject({ ...editableProject, ...localUpdates });
+      setEditableProject(withProjectCategories({ ...editableProject, ...localUpdates }));
       setEditProjectOpen(false);
       return;
     }
@@ -725,20 +753,25 @@ export function ProjectDetails() {
       const result = await projectsApi.update(editableProject.id, {
         title: trimmedName,
         description: trimmedDescription,
+        categories,
+        difficulty: projectForm.difficulty,
+        estimatedDuration: projectForm.estimatedDuration,
       });
 
       const apiProject = result.project ?? (await projectsApi.get(editableProject.id));
       const mapped = mapApiProjectToUi(apiProject, editableProject);
-      setEditableProject({
-        ...mapped,
-        ...localUpdates,
-        name: mapped.name,
-        description: mapped.description,
-      });
+      setEditableProject(
+        withProjectCategories({
+          ...mapped,
+          ...localUpdates,
+          name: mapped.name,
+          description: mapped.description,
+        })
+      );
       setProjectForm({
         name: mapped.name,
         description: mapped.description,
-        category: projectForm.category,
+        categories,
         difficulty: projectForm.difficulty,
         teamSize: projectForm.teamSize,
         estimatedDuration: projectForm.estimatedDuration,
@@ -853,7 +886,7 @@ export function ProjectDetails() {
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <span>{currentProject.estimatedDuration} semanas</span>
                 </div>
-                {currentProject.categories.map((c) => (
+                {(currentProject.categories ?? []).map((c) => (
                   <Badge key={c} variant="outline">{c}</Badge>
                 ))}
               </div>
@@ -1314,13 +1347,76 @@ export function ProjectDetails() {
                 onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="project-category">Categoría</Label>
-              <Input
-                id="project-category"
-                value={projectForm.category}
-                onChange={(e) => setProjectForm((f) => ({ ...f, category: e.target.value }))}
-              />
+            <div className="space-y-2 min-w-0">
+              <Label>Categorías</Label>
+              <p className="text-xs text-muted-foreground">
+                Elige sugerencias o escribe categorías nuevas. Un proyecto puede tener varias.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  id="project-category"
+                  placeholder="Ej: Cocina, Educación, FinTech..."
+                  value={categoryInput}
+                  onChange={(e) => setCategoryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addEditCategory(categoryInput);
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 px-3"
+                  onClick={() => addEditCategory(categoryInput)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {PROJECT_CATEGORY_SUGGESTIONS.filter(
+                  (c) =>
+                    !(projectForm.categories ?? []).some(
+                      (existing) => existing.toLowerCase() === c.toLowerCase()
+                    ) &&
+                    (categoryInput === '' ||
+                      c.toLowerCase().includes(categoryInput.toLowerCase()))
+                )
+                  .slice(0, 10)
+                  .map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => addEditCategory(c)}
+                      className="px-2.5 py-1 rounded-full bg-muted hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/30 text-xs transition-all"
+                    >
+                      + {c}
+                    </button>
+                  ))}
+              </div>
+              {(projectForm.categories ?? []).length > 0 ? (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {(projectForm.categories ?? []).map((c) => (
+                    <Badge key={c} variant="secondary" className="gap-1 pr-1 max-w-full">
+                      <span className="truncate">{c}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeEditCategory(c)}
+                        className="rounded-full hover:bg-foreground/10 p-0.5 shrink-0"
+                        aria-label={`Quitar ${c}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Agrega al menos una categoría para guardar.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1374,7 +1470,11 @@ export function ProjectDetails() {
             <Button type="button" variant="outline" onClick={() => setEditProjectOpen(false)}>
               Cancelar
             </Button>
-            <Button type="button" onClick={handleSaveProject} disabled={!projectForm.name.trim()}>
+            <Button
+              type="button"
+              onClick={handleSaveProject}
+              disabled={!projectForm.name.trim() || (projectForm.categories ?? []).length === 0}
+            >
               Guardar cambios
             </Button>
           </DialogFooter>

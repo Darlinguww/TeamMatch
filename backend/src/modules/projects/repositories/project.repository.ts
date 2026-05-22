@@ -283,7 +283,14 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
   public async updateProject(
     userId: string,
     projectId: string,
-    input: { title: string; description: string; roles?: ProjectRoleInput[] }
+    input: {
+      title: string;
+      description: string;
+      roles?: ProjectRoleInput[];
+      categories?: string[];
+      difficulty?: 'easy' | 'medium' | 'hard';
+      estimatedDuration?: number;
+    }
   ): Promise<ProjectDetails> {
     const session = driver.session();
     const updatedAt = new Date().toISOString();
@@ -298,7 +305,10 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
              project.description = $description,
              project.descripcion = $description,
              project.summary = $summary,
-             project.updatedAt = $updatedAt
+             project.updatedAt = $updatedAt,
+             project.categories = CASE WHEN $categories IS NULL THEN project.categories ELSE $categories END,
+             project.difficulty = CASE WHEN $difficulty IS NULL THEN project.difficulty ELSE $difficulty END,
+             project.estimatedDuration = CASE WHEN $estimatedDuration IS NULL THEN project.estimatedDuration ELSE $estimatedDuration END
          RETURN coalesce(project.projectId, project.proyectoId) AS projectKey`,
         {
           projectId,
@@ -306,6 +316,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
           description: input.description,
           summary,
           updatedAt,
+          categories: input.categories ?? null,
+          difficulty: input.difficulty ?? null,
+          estimatedDuration: input.estimatedDuration ?? null,
         }
       );
 

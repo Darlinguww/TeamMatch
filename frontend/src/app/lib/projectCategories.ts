@@ -16,6 +16,8 @@ export const PROJECT_CATEGORY_SUGGESTIONS = [
   'Arte y cultura',
   'Emprendimiento',
   'Investigación',
+  'Cocina',
+  'Sostenibilidad',
 ] as const;
 
 export function normalizeProjectCategory(value: string): string {
@@ -27,10 +29,10 @@ export function normalizeProjectCategory(value: string): string {
     .join(' ');
 }
 
-export function normalizeProjectCategories(values: string[]): string[] {
+export function normalizeProjectCategories(values?: string[] | null): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
-  for (const raw of values) {
+  for (const raw of values ?? []) {
     const normalized = normalizeProjectCategory(raw);
     if (!normalized) continue;
     const key = normalized.toLowerCase();
