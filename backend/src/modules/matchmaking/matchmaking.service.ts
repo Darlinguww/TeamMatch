@@ -78,6 +78,7 @@ export class MatchmakingService {
       : context.candidates.filter((candidate) => (
         !context.teamMembers.some((member) => member.userId === candidate.userId)
       ));
+      
     const scored = candidates.map((candidate) => (
       scoreMatchmakingCandidate(candidate, context.roles, context.teamMembers, options)
     ));
