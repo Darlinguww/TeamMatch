@@ -1,340 +1,110 @@
-import { driver } from '../../database/neo4j.js';
-import { SKILL_CATEGORIES } from '../profile/types/profile.types.js';
-import type { SkillCategory } from '../profile/types/profile.types.js';
-import type {
-  MatchmakingCandidate,
-  MatchmakingProjectContext,
-  MatchmakingRoleRequirement,
-  MatchmakingTeamMember
-} from './matchmaking.types.js';
+// =========================================================================
+// SCRIPT DE DATOS MAESTRO - REPOSITORIO DE MATCHMAKING & ESQUEMA CANÓNICO
+// =========================================================================
 
-type RawRecord = Record<string, unknown>;
+// 1. CREACIÓN DE NODOS DE HABILIDAD (Categorías mapeadas con SKILL_CATEGORY_KEYWORDS)
+UNWIND [
+  {n: 'Neo4j', c: 'data'}, {n: 'TypeScript', c: 'frontend'}, {n: 'Docker', c: 'devops'}, {n: 'Python', c: 'data'},
+  {n: 'React', c: 'frontend'}, {n: 'Figma', c: 'design'}, {n: 'Node.js', c: 'backend'}, {n: 'PostgreSQL', c: 'data'},
+  {n: 'Diagnóstico Médico', c: 'social-work'}, {n: 'Primeros Auxilios', c: 'social-work'}, {n: 'Sutura', c: 'social-work'}, {n: 'Farmacología', c: 'social-work'},
+  {n: 'Anatomía Clínica', c: 'social-work'}, {n: 'Leadership', c: 'management'}, {n: 'Communication', c: 'humanities'}, {n: 'Testing', c: 'qa'}
+] AS skill
+MERGE (h:Habilidad {name: skill.n})
+SET h.normalizedName = toLower(skill.n), h.category = skill.c;
 
-const SKILL_CATEGORY_KEYWORDS = {
-  frontend: ['react', 'react.js', 'vue', 'vue.js', 'angular', 'css', 'html', 'javascript', 'typescript'],
-  backend: ['node.js', 'nodejs', 'express', 'spring', 'django', 'java', 'c#', '.net', 'php', 'ruby', 'go'],
-  mobile: ['flutter', 'react native', 'kotlin', 'swift', 'android', 'ios'],
-  devops: ['docker', 'kubernetes', 'aws', 'azure', 'gcp', 'terraform', 'jenkins', 'github actions'],
-  data: ['python', 'sql', 'postgresql', 'mysql', 'mongodb', 'neo4j', 'tensorflow', 'pytorch', 'machine learning', 'data analysis'],
-  design: ['figma', 'ui design', 'ux design', 'photoshop', 'illustrator', 'wireframing', 'prototyping'],
-  humanities: ['writing', 'research', 'translation', 'history', 'philosophy', 'literature', 'communication'],
-  'social-work': ['social work', 'community management', 'case management', 'counseling', 'psychology', 'volunteering'],
-  management: ['project management', 'scrum', 'agile', 'leadership', 'planning', 'product management'],
-  marketing: ['seo', 'content marketing', 'copywriting', 'analytics', 'branding', 'campaign management'],
-  qa: ['qa', 'testing', 'test automation', 'selenium', 'cypress', 'playwright', 'jest', 'vitest']
-} satisfies Record<Exclude<SkillCategory, 'other'>, string[]>;
+// 2. CREACIÓN DE DISPONIBILIDADES (Mapeando días en inglés según exige tu parámetro $weekdays)
+UNWIND [
+  {d: 'monday', s: '08:00', e: '12:00'}, {d: 'tuesday', s: '14:00', e: '18:00'},
+  {d: 'wednesday', s: '09:00', e: '13:00'}, {d: 'thursday', s: '15:00', e: '19:00'},
+  {d: 'friday', s: '08:00', e: '16:00'}
+] AS slot
+CREATE (disp:Disponibilidad {day: slot.d, start: slot.s, end: slot.e});
 
-function normalizeSkillName(skillName: string): string {
-  return skillName.trim().toLowerCase();
-}
+// 3. CREACIÓN DE USUARIOS (Estructura de perfiles y nombres requeridos)
+UNWIND [
+  {id: 'U1', user: 'Daniel', em: 'daniel@uninorte.edu.co'},
+  {id: 'U2', user: 'Jhosep', em: 'jhosep@uninorte.edu.co'},
+  {id: 'U3', user: 'Iván', em: 'ivan@uninorte.edu.co'},
+  {id: 'U4', user: 'Mateo Andrés', em: 'mateoa@uninorte.edu.co'},
+  {id: 'U5', user: 'Carlos Mendoza', em: 'carlosm@uninorte.edu.co'},
+  {id: 'U6', user: 'Dra. María Camila', em: 'mcamila@uninorte.edu.co'},
+  {id: 'U7', user: 'Juan Sebastián', em: 'jsebastian@uninorte.edu.co'},
+  {id: 'U8', user: 'Gabriela Gómez', em: 'ggomez@uninorte.edu.co'}
+] AS data
+MERGE (u:Usuario {userId: data.id})
+SET u.user = data.user, u.email = data.em;
 
-function classifySkillCategory(skillName: string, rawCategory: unknown): SkillCategory {
-  if (typeof rawCategory === 'string' && rawCategory !== 'other' && SKILL_CATEGORIES.includes(rawCategory as SkillCategory)) {
-    return rawCategory as SkillCategory;
-  }
+// Asignar horarios de manera aleatoria simple para testing de candidatos
+MATCH (u:Usuario), (d:Disponibilidad)
+WITH u, d WHERE rand() > 0.4
+MERGE (u)-[:DISPONIBLE_EN]->(d);
 
-  const normalizedSkillName = normalizeSkillName(skillName);
-  const category = Object.entries(SKILL_CATEGORY_KEYWORDS).find(([, skills]) => skills.includes(normalizedSkillName))?.[0];
+// 4. ASIGNACIÓN DE RELACIONES DE EXPERIENCIA Y HABILIDADES DE PERFIL
+// Daniel
+MATCH (u:Usuario {userId: 'U1'}), (h1:Habilidad {name: 'Neo4j'}), (h2:Habilidad {name: 'TypeScript'}), (h3:Habilidad {name: 'Leadership'})
+MERGE (u)-[r1:TIENE_EXPERIENCIA_EN]->(h1) SET r1.yearsOfExperience = 3.5, r1.level = 'Advanced'
+MERGE (u)-[r2:TIENE_EXPERIENCIA_EN]->(h2) SET r2.yearsOfExperience = 2.0, r2.level = 'Intermediate'
+MERGE (u)-[:TIENE_HABILIDAD]->(h1) MERGE (u)-[:TIENE_HABILIDAD]->(h2) MERGE (u)-[:TIENE_HABILIDAD]->(h3);
 
-  return category && SKILL_CATEGORIES.includes(category as SkillCategory)
-    ? category as SkillCategory
-    : 'other';
-}
+// Jhosep
+MATCH (u:Usuario {userId: 'U2'}), (h1:Habilidad {name: 'TypeScript'}), (h2:Habilidad {name: 'Node.js'}), (h3:Habilidad {name: 'Docker'})
+MERGE (u)-[r1:TIENE_EXPERIENCIA_EN]->(h1) SET r1.yearsOfExperience = 4.0, r1.level = 'Advanced'
+MERGE (u)-[r2:TIENE_EXPERIENCIA_EN]->(h2) SET r2.yearsOfExperience = 3.0, r2.level = 'Advanced'
+MERGE (u)-[:TIENE_HABILIDAD]->(h1) MERGE (u)-[:TIENE_HABILIDAD]->(h2) MERGE (u)-[:TIENE_HABILIDAD]->(h3);
 
-function serializeStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-    : [];
-}
+// Iván
+MATCH (u:Usuario {userId: 'U3'}), (h1:Habilidad {name: 'React'}), (h2:Habilidad {name: 'TypeScript'}), (h3:Habilidad {name: 'Figma'})
+MERGE (u)-[r1:TIENE_EXPERIENCIA_EN]->(h1) SET r1.yearsOfExperience = 2.5, r1.level = 'Intermediate'
+MERGE (u)-[:TIENE_HABILIDAD]->(h1) MERGE (u)-[:TIENE_HABILIDAD]->(h2) MERGE (u)-[:TIENE_HABILIDAD]->(h3);
 
-function serializeExperienceItem(value: unknown): MatchmakingCandidate['experience'][number] | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null;
-  }
+// Mateo Andrés
+MATCH (u:Usuario {userId: 'U4'}), (h1:Habilidad {name: 'Python'}), (h2:Habilidad {name: 'PostgreSQL'})
+MERGE (u)-[r1:TIENE_EXPERIENCIA_EN]->(h1) SET r1.yearsOfExperience = 3.0, r1.level = 'Advanced'
+MERGE (u)-[:TIENE_HABILIDAD]->(h1) MERGE (u)-[:TIENE_HABILIDAD]->(h2);
 
-  const item = value as RawRecord;
-  const skillName = typeof item.skillName === 'string' ? item.skillName : '';
-  const category = classifySkillCategory(skillName, item.category);
+// Dra. María Camila (Perfil de Salud)
+MATCH (u:Usuario {userId: 'U6'}), (h1:Habilidad {name: 'Diagnóstico Médico'}), (h2:Habilidad {name: 'Primeros Auxilios'}), (h3:Habilidad {name: 'Leadership'})
+MERGE (u)-[r1:TIENE_EXPERIENCIA_EN]->(h1) SET r1.yearsOfExperience = 5.0, r1.level = 'Expert'
+MERGE (u)-[:TIENE_HABILIDAD]->(h1) MERGE (u)-[:TIENE_HABILIDAD]->(h2) MERGE (u)-[:TIENE_HABILIDAD]->(h3);
 
-  if (!skillName) {
-    return null;
-  }
+// 5. SIMULACIÓN DE EVALUACIONES PARA REPUTATION SCORE
+MATCH (evaluador:Usuario {userId: 'U5'}), (candidato:Usuario)
+WHERE candidato.userId <> 'U5'
+MERGE (evaluador)-[e:EVALUO]->(candidato)
+SET e.puntaje = 4.5, e.projectId = 'P1';
 
-  return {
-    skillName,
-    category,
-    yearsOfExperience: Number(item.yearsOfExperience ?? 0),
-    level: typeof item.level === 'string' && item.level ? item.level : null
-  };
-}
+// 6. CREACIÓN DE PROYECTOS Y SUS ROLES REQUERIDOS
+// Proyecto 1: Desarrollo de Software
+MERGE (p1:Proyecto {projectId: 'P1'})
+SET p1.title = 'Algoritmo Optimizado de Matchmaking', p1.description = 'Ecosistema inteligente para la gestión de equipos basada en grafos de conocimiento.';
 
-function serializeExperience(value: unknown): MatchmakingCandidate['experience'] {
-  return Array.isArray(value)
-    ? value.map(serializeExperienceItem).filter((item): item is MatchmakingCandidate['experience'][number] => item !== null)
-    : [];
-}
+CREATE (r1:Rol {roleId: 'R1_P1', name: 'Lead Backend Developer'})
+CREATE (r2:Rol {roleId: 'R2_P1', name: 'Frontend Engineer'})
+WITH p1, r1, r2
+MERGE (p1)-[:TIENE_ROL]->(r1)
+MERGE (p1)-[:TIENE_ROL]->(r2)
+WITH r1, r2
+MATCH (h1:Habilidad {name: 'Neo4j'}), (h2:Habilidad {name: 'Node.js'}), (h3:Habilidad {name: 'React'}), (h4:Habilidad {name: 'TypeScript'})
+MERGE (r1)-[:REQUIERE]->(h1) MERGE (r1)-[:REQUIERE]->(h2)
+MERGE (r2)-[:REQUIERE]->(h3) MERGE (r2)-[:REQUIERE]->(h4);
 
-function serializeAvailability(value: unknown): MatchmakingCandidate['availability'] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+// Proyecto 2: Brigada de Salud
+MERGE (p2:Proyecto {projectId: 'P2'})
+SET p2.title = 'Brigada de Asistencia Médica Rural', p2.description = 'Despliegue operativo y diagnóstico clínico en poblaciones vulnerables.';
 
-  return value.flatMap((item) => {
-    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
-      return [];
-    }
+CREATE (r3:Rol {roleId: 'R3_P2', name: 'Coordinador Médico'})
+CREATE (r4:Rol {roleId: 'R4_P2', name: 'Asistente de Triaje'})
+WITH p2, r3, r4
+MERGE (p2)-[:TIENE_ROL]->(r3)
+MERGE (p2)-[:TIENE_ROL]->(r4)
+WITH r3, r4
+MATCH (h1:Habilidad {name: 'Diagnóstico Médico'}), (h2:Habilidad {name: 'Leadership'}), (h3:Habilidad {name: 'Primeros Auxilios'})
+MERGE (r3)-[:REQUIERE]->(h1) MERGE (r3)-[:REQUIERE]->(h2)
+MERGE (r4)-[:REQUIERE]->(h3);
 
-    const rawItem = item as RawRecord;
-    const day = typeof rawItem.day === 'string' ? rawItem.day : '';
-    const timeSlots = Array.isArray(rawItem.timeSlots)
-      ? rawItem.timeSlots.flatMap((slot) => {
-        if (typeof slot !== 'object' || slot === null || Array.isArray(slot)) {
-          return [];
-        }
+// 7. ASIGNAR MIEMBROS ACTUALES A LOS EQUIPOS (Para testear teamMembers)
+MATCH (u1:Usuario {userId: 'U1'}), (p1:Proyecto {projectId: 'P1'})
+MERGE (u1)-[:PERTENECE_A]->(p1);
 
-        const rawSlot = slot as RawRecord;
-
-        if (typeof rawSlot.start !== 'string' || typeof rawSlot.end !== 'string') {
-          return [];
-        }
-
-        return [{ start: rawSlot.start, end: rawSlot.end }];
-      })
-      : [];
-
-    if (!day || timeSlots.length === 0) {
-      return [];
-    }
-
-    return [{ day: day as MatchmakingCandidate['availability'][number]['day'], timeSlots }];
-  });
-}
-
-function serializeRole(value: unknown): MatchmakingRoleRequirement | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null;
-  }
-
-  const item = value as RawRecord;
-  const roleId = String(item.roleId ?? '');
-  const name = typeof item.name === 'string' && item.name ? item.name : roleId;
-
-  if (!roleId && !name) {
-    return null;
-  }
-
-  return {
-    roleId,
-    name,
-    requiredSkills: serializeStringArray(item.requiredSkills)
-  };
-}
-
-function serializeTeamMember(value: unknown): MatchmakingTeamMember | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null;
-  }
-
-  const item = value as RawRecord;
-  const userId = typeof item.userId === 'string' ? item.userId : '';
-
-  if (!userId) {
-    return null;
-  }
-
-  return {
-    userId,
-    experience: serializeExperience(item.experience)
-  };
-}
-
-function serializeCandidate(value: unknown): MatchmakingCandidate | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null;
-  }
-
-  const item = value as RawRecord;
-  const userId = typeof item.userId === 'string' ? item.userId : '';
-
-  if (!userId) {
-    return null;
-  }
-
-  return {
-    userId,
-    user: typeof item.user === 'string' ? item.user : '',
-    experience: serializeExperience(item.experience),
-    profileSkills: serializeStringArray(item.profileSkills),
-    availability: serializeAvailability(item.availability),
-    reputationScore: Number(item.reputationScore ?? 0)
-  };
-}
-
-export class MatchmakingRepository {
-  public async findProjectContext(projectId: string): Promise<MatchmakingProjectContext | null> {
-    const session = driver.session();
-
-    try {
-      const result = await session.run(
-        `MATCH (project:Proyecto {projectId: $projectId})
-         CALL {
-           WITH project
-           OPTIONAL MATCH (project)-[:TIENE_ROL]->(role:Rol)
-           OPTIONAL MATCH (role)-[:REQUIERE]->(skill:Habilidad)
-           WITH role, [skillName IN collect(DISTINCT skill.name) WHERE skillName IS NOT NULL] AS requiredSkills
-           ORDER BY toLower(coalesce(role.name, '')), role.roleId
-           RETURN [item IN collect(
-             CASE
-               WHEN role IS NULL THEN null
-               ELSE {
-                 roleId: coalesce(role.roleId, elementId(role)),
-                 name: coalesce(role.name, role.nombre, ''),
-                 requiredSkills: requiredSkills
-               }
-             END
-           ) WHERE item IS NOT NULL] AS roles
-         }
-         CALL {
-           WITH project
-           OPTIONAL MATCH (member:Usuario)-[:PERTENECE_A]->(project)
-           CALL {
-             WITH member
-             OPTIONAL MATCH (member)-[experienceRel:TIENE_EXPERIENCIA_EN]->(skill:Habilidad)
-             WITH member, skill, experienceRel
-             ORDER BY toLower(coalesce(skill.name, ''))
-             RETURN [item IN collect(
-               CASE
-                 WHEN member IS NULL OR skill IS NULL THEN null
-                 ELSE {
-                   skillName: skill.name,
-                   category: coalesce(skill.category, 'other'),
-                   yearsOfExperience: coalesce(experienceRel.yearsOfExperience, 0.0),
-                   level: experienceRel.level
-                 }
-               END
-             ) WHERE item IS NOT NULL] AS experience
-           }
-           WITH member, experience
-           ORDER BY member.userId
-           RETURN [item IN collect(
-             CASE
-               WHEN member IS NULL THEN null
-               ELSE {
-                 userId: member.userId,
-                 experience: experience
-               }
-             END
-           ) WHERE item IS NOT NULL] AS teamMembers
-         }
-         CALL {
-           WITH project
-           MATCH (candidate:Usuario)
-           CALL {
-             WITH candidate
-             OPTIONAL MATCH (candidate)-[experienceRel:TIENE_EXPERIENCIA_EN]->(skill:Habilidad)
-             WITH skill, experienceRel
-             ORDER BY toLower(coalesce(skill.name, ''))
-             RETURN [item IN collect(
-               CASE
-                 WHEN skill IS NULL THEN null
-                 ELSE {
-                   skillName: skill.name,
-                   category: coalesce(skill.category, 'other'),
-                   yearsOfExperience: coalesce(experienceRel.yearsOfExperience, 0.0),
-                   level: experienceRel.level
-                 }
-               END
-             ) WHERE item IS NOT NULL] AS experience
-           }
-           CALL {
-             WITH candidate
-             OPTIONAL MATCH (candidate)-[:TIENE_HABILIDAD]->(profileSkill:Habilidad)
-             RETURN [name IN collect(DISTINCT profileSkill.name) WHERE name IS NOT NULL] AS profileSkills
-           }
-           CALL {
-             WITH candidate
-             OPTIONAL MATCH (candidate)-[:DISPONIBLE_EN]->(availability:Disponibilidad)
-             WITH availability
-             ORDER BY availability.start
-             WITH [item IN collect(
-               CASE
-                 WHEN availability IS NULL THEN null
-                 ELSE {
-                   day: availability.day,
-                   start: availability.start,
-                   end: availability.end
-                 }
-               END
-             ) WHERE item IS NOT NULL] AS availabilitySlots
-             RETURN [day IN $weekdays
-               WHERE size([slot IN availabilitySlots WHERE slot.day = day]) > 0 |
-               {
-                 day: day,
-                 timeSlots: [slot IN availabilitySlots WHERE slot.day = day | {start: slot.start, end: slot.end}]
-               }] AS availability
-           }
-           CALL {
-             WITH candidate
-             OPTIONAL MATCH (:Usuario)-[evaluation:EVALUO]->(candidate)
-             WITH [rawScore IN collect(evaluation.puntaje) WHERE rawScore IS NOT NULL | coalesce(toFloat(rawScore), 0.0)] AS scores
-             WITH [score IN scores |
-               CASE
-                 WHEN score < $minEvaluationScore THEN $minEvaluationScore
-                 WHEN score > $maxEvaluationScore THEN $maxEvaluationScore
-                 ELSE score
-               END
-             ] AS boundedScores
-             RETURN CASE
-               WHEN size(boundedScores) = 0 THEN 0.0
-               ELSE (reduce(total = 0.0, score IN boundedScores | total + score) / size(boundedScores)) / $maxEvaluationScore
-             END AS reputationScore
-           }
-           WITH candidate, experience, profileSkills, availability, reputationScore
-           ORDER BY toLower(coalesce(candidate.user, '')), candidate.userId
-           RETURN collect({
-             userId: candidate.userId,
-             user: candidate.user,
-             experience: experience,
-             profileSkills: profileSkills,
-             availability: availability,
-             reputationScore: reputationScore
-           }) AS candidates
-         }
-         RETURN project.projectId AS projectId,
-                coalesce(project.title, project.titulo, project.name, project.nombre, '') AS title,
-                roles,
-                teamMembers,
-                candidates
-         LIMIT 1`,
-        {
-          projectId,
-          weekdays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
-          minEvaluationScore: 0,
-          maxEvaluationScore: 5
-        }
-      );
-
-      if (result.records.length === 0) {
-        return null;
-      }
-
-      const record = result.records[0];
-
-      return {
-        projectId: String(record.get('projectId')),
-        title: typeof record.get('title') === 'string' ? record.get('title') as string : '',
-        roles: Array.isArray(record.get('roles'))
-          ? (record.get('roles') as unknown[]).map(serializeRole).filter((role): role is MatchmakingRoleRequirement => role !== null)
-          : [],
-        teamMembers: Array.isArray(record.get('teamMembers'))
-          ? (record.get('teamMembers') as unknown[]).map(serializeTeamMember).filter((member): member is MatchmakingTeamMember => member !== null)
-          : [],
-        candidates: Array.isArray(record.get('candidates'))
-          ? (record.get('candidates') as unknown[]).map(serializeCandidate).filter((candidate): candidate is MatchmakingCandidate => candidate !== null)
-          : []
-      };
-    } finally {
-      await session.close();
-    }
-  }
-}
+MATCH (u2:Usuario {userId: 'U2'}), (p1:Proyecto {projectId: 'P1'})
+MERGE (u2)-[:PERTENECE_A]->(p1);
