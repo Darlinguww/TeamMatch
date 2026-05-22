@@ -1,3 +1,4 @@
+import { normalizeSkillName } from '../matchmaking/matchmaking.utils.js'; // Ajusta la ruta relativa si es necesario
 import { env } from '../../config/env.js';
 import { BadRequestError, NotFoundError, BadGatewayError, UnprocessableEntityError } from '../../shared/errors/HttpErrors.js';
 import {
@@ -212,7 +213,7 @@ export class ProfileService {
   public async getUserReputation(userId: string): Promise<UserReputation> {
     const profile = await this.getPublicProfile(userId);
 
-    const skills = (profile.skills || []).map((skill) => skill.trim().toLowerCase()).filter(Boolean);
+    const skills = (profile.skills || []).map(normalizeSkillName).filter(Boolean);
     const skillsCount = skills.length;
     const skillsScore = Math.min(skillsCount * 10, 100);
 
@@ -226,7 +227,7 @@ export class ProfileService {
     const availabilityScore = Math.round((availabilityDays / 7) * 100);
 
     const experienceSkillSet = new Set(
-      (profile.experience || []).map((experience) => experience.skillName.trim().toLowerCase()).filter(Boolean)
+      (profile.experience || []).map((experience) => normalizeSkillName(experience.skillName)).filter(Boolean)
     );
     const experienceAlignmentScore =
       skillsCount === 0
