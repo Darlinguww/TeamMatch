@@ -76,14 +76,31 @@ export class ProjectService {
 
   public async createProject(
     leaderId: string,
-    input: { title?: unknown; description?: unknown; roles?: unknown }
+    input: {
+      title?: unknown;
+      description?: unknown;
+      roles?: unknown;
+      categories?: unknown;
+      difficulty?: unknown;
+      estimatedDuration?: unknown;
+    }
   ): Promise<{ projectId: string }> {
     const title = this.parseTitle(input.title);
     const description = typeof input.description === 'string' ? input.description.trim() : '';
     const roles = this.parseRoles(input.roles);
+    const categories = this.parseCategories(input.categories);
+    const difficulty = this.parseDifficulty(input.difficulty);
+    const estimatedDuration = this.parseEstimatedDuration(input.estimatedDuration);
 
     const projectId = randomUUID();
-    await this.repository.createProject(leaderId, projectId, { title, description, roles });
+    await this.repository.createProject(leaderId, projectId, {
+      title,
+      description,
+      roles,
+      categories,
+      difficulty,
+      estimatedDuration,
+    });
 
     return { projectId };
   }
@@ -256,6 +273,51 @@ export class ProjectService {
     return value.trim();
   }
 
+  private parseCategories(value: unknown): string[] {
+    if (value === undefined || value === null) {
+      return ['General'];
+    }
+
+    const raw = Array.isArray(value) ? value : [value];
+    const categories = raw
+      .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+      .map((item) => item.trim());
+
+    if (categories.length === 0) {
+      throw new BadRequestError('Debe indicar al menos una categoría');
+    }
+
+    const seen = new Set<string>();
+    return categories.filter((category) => {
+      const key = category.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private parseDifficulty(value: unknown): 'easy' | 'medium' | 'hard' {
+    if (value === undefined || value === null || value === '') {
+      return 'medium';
+    }
+    const normalized = String(value).trim().toLowerCase();
+    if (normalized === 'easy' || normalized === 'hard' || normalized === 'medium') {
+      return normalized;
+    }
+    throw new BadRequestError('difficulty debe ser easy, medium o hard');
+  }
+
+  private parseEstimatedDuration(value: unknown): number {
+    if (value === undefined || value === null || value === '') {
+      return 4;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 52) {
+      throw new BadRequestError('estimatedDuration debe ser un entero entre 1 y 52');
+    }
+    return parsed;
+  }
+
   private parseRoles(value: unknown): ProjectRoleInput[] {
     if (!Array.isArray(value) || value.length === 0) {
       throw new BadRequestError('Debe definir al menos un rol');
@@ -272,17 +334,11 @@ export class ProjectService {
         throw new BadRequestError(`El nombre del rol es requerido en la posicion ${index}`);
       }
 
-      if (!Array.isArray(rawRole.skills) || rawRole.skills.length === 0) {
-        throw new BadRequestError(`El rol '${role}' debe incluir al menos una skill`);
-      }
-
-      const skills = rawRole.skills
-        .filter((skill): skill is string => typeof skill === 'string' && Boolean(skill.trim()))
-        .map((skill) => skill.trim());
-
-      if (skills.length === 0) {
-        throw new BadRequestError(`El rol '${role}' debe incluir al menos una skill valida`);
-      }
+      const skills = Array.isArray(rawRole.skills)
+        ? rawRole.skills
+            .filter((skill): skill is string => typeof skill === 'string' && Boolean(skill.trim()))
+            .map((skill) => skill.trim())
+        : [];
 
       let headcount = 1;
       if (rawRole.headcount !== undefined && rawRole.headcount !== null && rawRole.headcount !== '') {

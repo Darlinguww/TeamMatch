@@ -37,8 +37,27 @@ export interface Project {
   currentTeamSize: number;
   startDate: string;
   estimatedDuration: number; // weeks
+  /** Categorías del proyecto (puede pertenecer a varias). */
+  categories: string[];
+  /** Primera categoría; compatibilidad con vistas que usan una sola etiqueta. */
   category: string;
   difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export function withProjectCategories(
+  project: Omit<Project, 'categories' | 'category'> & { categories?: string[]; category?: string }
+): Project {
+  const categories =
+    project.categories?.length
+      ? project.categories
+      : project.category
+        ? [project.category]
+        : ['General'];
+  return {
+    ...project,
+    categories,
+    category: categories[0] ?? 'General',
+  };
 }
 
 export interface Role {
@@ -179,7 +198,7 @@ export const mockUsers: User[] = [
   },
 ];
 
-export const mockProjects: Project[] = [
+const mockProjectsSeed = [
   {
     id: 'p1',
     name: 'EcoTrack - App de Sostenibilidad',
@@ -272,7 +291,9 @@ export const mockProjects: Project[] = [
     category: 'AI/ML',
     difficulty: 'hard',
   },
-];
+] as Array<Omit<Project, 'categories'> & { category: string }>;
+
+export const mockProjects: Project[] = mockProjectsSeed.map((p) => withProjectCategories(p));
 
 export const mockTeamMembers: TeamMember[] = [
   {

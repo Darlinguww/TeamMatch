@@ -83,7 +83,7 @@ export function ProjectDetails() {
   const [projectForm, setProjectForm] = useState<ProjectEditForm>({
     name: project?.name ?? '',
     description: project?.description ?? '',
-    category: project?.category ?? '',
+    category: project?.categories?.join(', ') ?? project?.category ?? '',
     difficulty: project?.difficulty ?? 'medium',
     teamSize: project?.teamSize ?? 3,
     estimatedDuration: project?.estimatedDuration ?? 4,
@@ -115,7 +115,7 @@ export function ProjectDetails() {
     setProjectForm({
       name: source.name,
       description: source.description,
-      category: source.category,
+      category: source.categories.join(', '),
       difficulty: source.difficulty,
       teamSize: source.teamSize,
       estimatedDuration: source.estimatedDuration,
@@ -853,7 +853,9 @@ export function ProjectDetails() {
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <span>{currentProject.estimatedDuration} semanas</span>
                 </div>
-                <Badge variant="outline">{currentProject.category}</Badge>
+                {currentProject.categories.map((c) => (
+                  <Badge key={c} variant="outline">{c}</Badge>
+                ))}
               </div>
             </div>
             <div className="flex flex-col gap-2">

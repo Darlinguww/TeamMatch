@@ -20,11 +20,14 @@ import { isApiModeEnabled, mapApiProjectToUi, matchmakingApi, projectsApi } from
 import { useSettings } from '../lib/settingsContext';
 import { ROLE_SUGGESTIONS, SKILL_SUGGESTIONS } from '../lib/skillCatalog';
 import { difficultyColors, statusColors } from '../lib/badgeStyles';
-
-const CATEGORIES = [
-  'Web Platform', 'Mobile App', 'AI/ML', 'Data Science',
-  'DevOps', 'Blockchain', 'IoT', 'Education', 'FinTech', 'Salud Digital',
-];
+import {
+  collectFilterCategoryOptions,
+  normalizeProjectCategory,
+  normalizeProjectCategories,
+  PROJECT_CATEGORY_SUGGESTIONS,
+  projectMatchesCategoryFilter,
+} from '../lib/projectCategories';
+import { withProjectCategories } from '../lib/mockData';
 
 const WIZARD_STEPS = ['Básico', 'Equipo', 'Habilidades', 'Confirmar'];
 
@@ -36,7 +39,7 @@ interface SkillEntry { id: string; name: string; }
 interface NewProjectForm {
   name: string;
   description: string;
-  category: string;
+  categories: string[];
   difficulty: 'easy' | 'medium' | 'hard';
   estimatedDuration: number;
   teamSize: number;
@@ -90,7 +93,7 @@ function CreateProjectModal({ open, onClose, onCreated }: {
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<NewProjectForm>({
-    name: '', description: '', category: '', difficulty: 'medium',
+    name: '', description: '', categories: [], difficulty: 'medium',
     estimatedDuration: 4, teamSize: 3, roles: [], requiredSkills: [], objectives: '',
   });
 
@@ -99,6 +102,7 @@ function CreateProjectModal({ open, onClose, onCreated }: {
   const [roleHeadcount, setRoleHeadcount] = useState(1);
   const [skillInput, setSkillInput] = useState('');
   const [roleSkillInputs, setRoleSkillInputs] = useState<Record<string,string>>({});
+  const [categoryInput, setCategoryInput] = useState('');
 
   const getTeamSizeFromRoles = (roles: RoleEntry[]) =>
     Math.min(20, Math.max(1, 1 + roles.reduce((sum, role) => sum + Math.max(1, role.headcount ?? 1), 0)));
@@ -160,6 +164,17 @@ function CreateProjectModal({ open, onClose, onCreated }: {
     set({ roles: form.roles.map(r => r.id === roleId ? { ...r, skills: r.skills.filter(s => s.id !== skillId) } : r) });
   };
 
+  const addCategory = (name: string) => {
+    const normalized = normalizeProjectCategory(name);
+    if (!normalized) return;
+    set({ categories: normalizeProjectCategories([...form.categories, normalized]) });
+    setCategoryInput('');
+  };
+
+  const removeCategory = (name: string) => {
+    set({ categories: form.categories.filter((c) => c !== name) });
+  };
+
   const addSkill = (name: string) => {
     const trimmed = name.trim();
     if (!trimmed || form.requiredSkills.some(s => s.name.toLowerCase() === trimmed.toLowerCase())) return;
@@ -168,9 +183,15 @@ function CreateProjectModal({ open, onClose, onCreated }: {
   };
 
   const canNext = () => {
-    if (step === 0) return form.name.trim().length > 1 && form.description.trim().length > 10 && form.category !== '';
-    if (step === 1) return form.teamSize >= 1 && form.roles.length > 0 && form.roles.every(r => r.skills && r.skills.length > 0);
-    if (step === 2) return form.requiredSkills.length > 0;
+    if (step === 0) {
+      return (
+        form.name.trim().length > 1 &&
+        form.description.trim().length > 10 &&
+        form.categories.length > 0
+      );
+    }
+    if (step === 1) return form.teamSize >= 1 && form.roles.length > 0;
+    if (step === 2) return true;
     return true;
   };
 
@@ -178,9 +199,13 @@ function CreateProjectModal({ open, onClose, onCreated }: {
     setSaving(true);
     try {
       const globalSkills = form.requiredSkills.map((s) => s.name);
+      const categories = normalizeProjectCategories(form.categories);
       const payload = {
         title: form.name,
         description: form.description,
+        categories,
+        difficulty: form.difficulty,
+        estimatedDuration: form.estimatedDuration,
         roles: form.roles.map((r) => ({
           role: r.name,
           headcount: r.headcount ?? 1,
@@ -188,7 +213,7 @@ function CreateProjectModal({ open, onClose, onCreated }: {
         })),
       };
 
-      const localProject = {
+      const localProject = withProjectCategories({
         id: `proj_${Date.now()}`,
         name: form.name,
         description: form.description,
@@ -200,9 +225,9 @@ function CreateProjectModal({ open, onClose, onCreated }: {
         currentTeamSize: 1,
         startDate: new Date().toISOString().split('T')[0],
         estimatedDuration: form.estimatedDuration,
-        category: form.category,
+        categories,
         difficulty: form.difficulty,
-      } as Project;
+      });
 
       if (!isApiModeEnabled()) {
         onCreated(localProject);
@@ -214,7 +239,8 @@ function CreateProjectModal({ open, onClose, onCreated }: {
       }
 
       setStep(0);
-      setForm({ name: '', description: '', category: '', difficulty: 'medium', estimatedDuration: 4, teamSize: 3, roles: [], requiredSkills: [], objectives: '' });
+      setForm({ name: '', description: '', categories: [], difficulty: 'medium', estimatedDuration: 4, teamSize: 3, roles: [], requiredSkills: [], objectives: '' });
+      setCategoryInput('');
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Create project failed', error);
@@ -294,17 +320,61 @@ function CreateProjectModal({ open, onClose, onCreated }: {
                 onChange={e => set({ objectives: e.target.value })} rows={2} />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Categoría <span className="text-destructive">*</span></Label>
-                <Select value={form.category} onValueChange={v => set({ category: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecciona..." /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-2">
+              <Label>Categorías <span className="text-destructive">*</span></Label>
+              <p className="text-xs text-muted-foreground">
+                Elige sugerencias o escribe categorías nuevas. Un proyecto puede tener varias.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Ej: Educación, Música, FinTech..."
+                  value={categoryInput}
+                  onChange={(e) => setCategoryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCategory(categoryInput);
+                    }
+                  }}
+                  className="h-10"
+                />
+                <Button type="button" variant="outline" size="sm" className="h-10 px-4 shrink-0" onClick={() => addCategory(categoryInput)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {PROJECT_CATEGORY_SUGGESTIONS.filter(
+                  (c) =>
+                    !form.categories.some((existing) => existing.toLowerCase() === c.toLowerCase()) &&
+                    (categoryInput === '' || c.toLowerCase().includes(categoryInput.toLowerCase()))
+                )
+                  .slice(0, 10)
+                  .map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => addCategory(c)}
+                      className="px-2.5 py-1 rounded-full bg-muted hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/30 text-xs transition-all"
+                    >
+                      + {c}
+                    </button>
+                  ))}
+              </div>
+              {form.categories.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {form.categories.map((c) => (
+                    <Badge key={c} variant="secondary" className="gap-1 pr-1">
+                      {c}
+                      <button type="button" onClick={() => removeCategory(c)} className="rounded-full hover:bg-foreground/10 p-0.5">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 max-w-xs">
                 <Label>Dificultad</Label>
                 <Select value={form.difficulty} onValueChange={(v: any) => set({ difficulty: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -314,7 +384,6 @@ function CreateProjectModal({ open, onClose, onCreated }: {
                     <SelectItem value="hard">🔴 Difícil</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
             </div>
 
             <div className="space-y-2">
@@ -345,8 +414,11 @@ function CreateProjectModal({ open, onClose, onCreated }: {
 
             <div className="space-y-3">
               <Label>Roles requeridos <span className="text-destructive">*</span></Label>
+              <p className="text-xs text-muted-foreground">
+                Agrega al menos un rol desde las sugerencias o escribiendo uno personalizado (opcional).
+              </p>
               <div className="flex gap-2">
-                <Input placeholder="Nombre del rol..." value={roleInput}
+                <Input placeholder="Nombre del rol (opcional si usas sugerencias)..." value={roleInput}
                   onChange={e => setRoleInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addRole(roleInput); } }}
                   className="h-10" />
@@ -375,7 +447,7 @@ function CreateProjectModal({ open, onClose, onCreated }: {
                   <p className="text-xs text-muted-foreground mb-1.5">Sugerencias:</p>
                   <div className="flex flex-wrap gap-1.5">
                     {filteredRoleSuggestions.map(r => (
-                      <button key={r} onClick={() => { setRoleInput(r); addRole(r); }}
+                      <button key={r} type="button" onClick={() => addRole(r)}
                         className="px-2.5 py-1 rounded-full bg-muted hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/30 text-xs transition-all">
                         + {r}
                       </button>
@@ -408,7 +480,7 @@ function CreateProjectModal({ open, onClose, onCreated }: {
                         </div>
 
                         <div className="space-y-2">
-                          <p className="text-xs text-muted-foreground mb-1">Habilidades para este rol</p>
+                          <p className="text-xs text-muted-foreground mb-1">Habilidades para este rol (opcional)</p>
                           <div className="flex gap-2">
                             <Input placeholder="Añadir habilidad..." value={roleSkillInputs[r.id] || ''}
                               onChange={e => setRoleSkillInput(r.id, e.target.value)}
@@ -442,8 +514,10 @@ function CreateProjectModal({ open, onClose, onCreated }: {
         {step === 2 && (
           <div className="space-y-5">
             <div className="space-y-3">
-              <Label>Habilidades requeridas <span className="text-destructive">*</span></Label>
-              <p className="text-xs text-muted-foreground">El motor de IA usará estas habilidades para encontrar los mejores candidatos.</p>
+              <Label>Habilidades requeridas (opcional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Si las defines, el motor de IA las usará para encontrar mejores candidatos. Puedes continuar sin agregar ninguna.
+              </p>
 
               <div className="flex gap-2">
                 <Input placeholder="Escribe o selecciona una habilidad..." value={skillInput}
@@ -516,7 +590,7 @@ function CreateProjectModal({ open, onClose, onCreated }: {
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {[
-                  { icon: Layers,    label: 'Categoría',   value: form.category },
+                  { icon: Layers,    label: 'Categorías',  value: form.categories.join(', ') },
                   { icon: Target,    label: 'Dificultad',  value: difficultyLabels[form.difficulty] },
                   { icon: Calendar,  label: 'Duración',    value: `${form.estimatedDuration} semanas` },
                   { icon: Users,     label: 'Equipo',      value: `${form.teamSize} personas` },
@@ -623,7 +697,11 @@ function ProjectCard({
 
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <div className="flex items-center gap-1"><Clock className="h-3 w-3" />{project.estimatedDuration} semanas</div>
-            <Badge variant="outline" className="text-xs">{project.category}</Badge>
+            <div className="flex flex-wrap gap-1">
+              {project.categories.map((c) => (
+                <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
+              ))}
+            </div>
           </div>
 
           {project.status === 'open' && spotsLeft > 0 && (
@@ -727,7 +805,7 @@ export function Projects() {
     const q = searchTerm.toLowerCase();
     return (
       (p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)) &&
-      (categoryFilter   === 'all' || p.category   === categoryFilter)   &&
+      projectMatchesCategoryFilter(p.categories, categoryFilter) &&
       (difficultyFilter === 'all' || p.difficulty === difficultyFilter) &&
       (statusFilter     === 'all' || p.status     === statusFilter)
     );
@@ -735,7 +813,7 @@ export function Projects() {
 
   const openProjects       = filtered.filter(p => p.status === 'open');
   const inProgressProjects = filtered.filter(p => p.status === 'in-progress');
-  const categories         = ['all', ...new Set(allProjects.map(p => p.category))];
+  const categories         = ['all', ...collectFilterCategoryOptions(allProjects)];
 
   const calcMatch = (project: Project) => {
     if (isApiModeEnabled()) {

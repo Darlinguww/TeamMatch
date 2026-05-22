@@ -8,6 +8,9 @@ export interface CreateProjectInput {
   title: string;
   description: string;
   roles: ProjectRoleInput[];
+  categories?: string[];
+  difficulty?: 'easy' | 'medium' | 'hard';
+  estimatedDuration?: number;
 }
 
 export interface ProjectSummary {
@@ -15,6 +18,9 @@ export interface ProjectSummary {
   title: string;
   summary: string;
   createdAt: string;
+  categories: string[];
+  difficulty: 'easy' | 'medium' | 'hard';
+  estimatedDuration: number;
   leader: {
     userId: string | null;
     email: string | null;

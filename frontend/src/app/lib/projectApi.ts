@@ -2,6 +2,7 @@ import { ApiError, apiRequest, getStoredToken } from './apiClient';
 import type { Project, Task, TaskStatus } from './mockData';
 import { computeProjectTaskProgress, type ProjectTaskProgress } from './projectProgress';
 import { apiTaskStatusToUi, uiTaskStatusToApiCrud, uiTaskStatusToWorkflowPatch } from './taskStatus';
+import { resolveProjectCategories } from './projectCategories';
 
 export function isApiModeEnabled(): boolean {
   return import.meta.env.VITE_USE_API_AUTH === 'true' && Boolean(getStoredToken());
@@ -52,6 +53,9 @@ export interface ApiProjectDetails {
   summary: string;
   description?: string;
   createdAt: string;
+  categories?: string[];
+  difficulty?: 'easy' | 'medium' | 'hard';
+  estimatedDuration?: number;
   leader: { userId: string | null; email: string | null } | null;
   roles: ApiProjectRole[];
   kanban?: ApiProjectKanbanState;
@@ -111,6 +115,12 @@ async function resourceRequest<T>(path: string, init: RequestInit = {}): Promise
 export function mapApiProjectToUi(api: ApiProjectDetails, fallback?: Project): Project {
   const leaderId = api.leader?.userId ?? fallback?.leaderId ?? '';
   const roles = Array.isArray(api.roles) ? api.roles : [];
+  const categories = resolveProjectCategories(
+    api.categories,
+    api.title,
+    api.description || api.summary,
+    fallback?.categories ?? (fallback?.category ? [fallback.category] : undefined)
+  );
   return {
     id: api.id,
     name: api.title,
@@ -147,9 +157,10 @@ export function mapApiProjectToUi(api: ApiProjectDetails, fallback?: Project): P
       fallback?.currentTeamSize ??
       (typeof api.memberCount === 'number' && api.memberCount > 0 ? api.memberCount : 1),
     startDate: fallback?.startDate ?? api.createdAt.split('T')[0],
-    estimatedDuration: fallback?.estimatedDuration ?? 4,
-    category: fallback?.category ?? 'Web Platform',
-    difficulty: fallback?.difficulty ?? 'medium',
+    estimatedDuration: fallback?.estimatedDuration ?? api.estimatedDuration ?? 4,
+    categories,
+    category: categories[0] ?? 'General',
+    difficulty: fallback?.difficulty ?? api.difficulty ?? 'medium',
   };
 }
 
@@ -254,7 +265,14 @@ export const projectsApi = {
         body: JSON.stringify({ roleName, message: message ?? null }),
       }
     ),
-  create: (body: { title: string; description?: string; roles: ApiProjectRole[] }) =>
+  create: (body: {
+    title: string;
+    description?: string;
+    roles: ApiProjectRole[];
+    categories?: string[];
+    difficulty?: 'easy' | 'medium' | 'hard';
+    estimatedDuration?: number;
+  }) =>
     resourceRequest<{ projectId: string; project?: ApiProjectDetails }>('/projects', {
       method: 'POST',
       body: JSON.stringify(body),

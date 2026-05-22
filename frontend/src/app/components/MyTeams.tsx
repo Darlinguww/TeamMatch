@@ -217,7 +217,9 @@ export function MyTeams() {
                               <Clock className="h-4 w-4" />
                               <span>{project.estimatedDuration} semanas</span>
                             </div>
-                            <Badge variant="outline">{project.category}</Badge>
+                            {project.categories.map((c) => (
+                              <Badge key={c} variant="outline">{c}</Badge>
+                            ))}
                           </div>
                         </div>
                         <Button asChild>

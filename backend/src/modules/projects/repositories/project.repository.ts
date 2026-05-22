@@ -49,6 +49,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
            description: $description,
            summary: $summary,
            status: 'open',
+           categories: $categories,
+           difficulty: $difficulty,
+           estimatedDuration: $estimatedDuration,
            kanbanSprintActive: false,
            kanbanCurrentSprint: 1,
            createdAt: $createdAt
@@ -67,14 +70,18 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
          })
          MERGE (project)-[:TIENE_ROL]->(role)
          WITH project, leader, role, roleInput
-         UNWIND roleInput.skills AS skillName
-         MERGE (skill:Habilidad {normalizedName: toLower(trim(skillName))})
-         ON CREATE SET skill.name = trim(skillName),
-                       skill.createdAt = datetime(),
-                       skill.es_tecnica = true
-         ON MATCH SET skill.name = coalesce(skill.name, trim(skillName)),
-                      skill.updatedAt = datetime()
-         MERGE (role)-[:REQUIERE]->(skill)
+         UNWIND CASE WHEN size(coalesce(roleInput.skills, [])) = 0 THEN [null] ELSE roleInput.skills END AS skillName
+         WITH project, leader, role, roleInput, skillName
+         WHERE skillName IS NULL OR trim(skillName) <> ''
+         FOREACH (_ IN CASE WHEN skillName IS NULL THEN [] ELSE [1] END |
+           MERGE (skill:Habilidad {normalizedName: toLower(trim(skillName))})
+           ON CREATE SET skill.name = trim(skillName),
+                         skill.createdAt = datetime(),
+                         skill.es_tecnica = true
+           ON MATCH SET skill.name = coalesce(skill.name, trim(skillName)),
+                        skill.updatedAt = datetime()
+           MERGE (role)-[:REQUIERE]->(skill)
+         )
          WITH project, leader
          RETURN leader.userId AS leaderId, project.projectId AS projectId`,
         {
@@ -84,9 +91,12 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
           description: input.description,
           summary,
           createdAt,
+          categories: input.categories ?? [],
+          difficulty: input.difficulty ?? 'medium',
+          estimatedDuration: input.estimatedDuration ?? 4,
           roles: input.roles.map((r) => ({
             role: r.role,
-            skills: r.skills,
+            skills: r.skills ?? [],
             headcount: Math.max(1, Math.min(20, r.headcount ?? 1)),
           })),
         }
@@ -127,6 +137,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 p.title AS title,
                 p.summary AS summary,
                 p.createdAt AS createdAt,
+                coalesce(p.categories, []) AS categories,
+                coalesce(p.difficulty, 'medium') AS difficulty,
+                coalesce(p.estimatedDuration, 4) AS estimatedDuration,
                 leader.userId AS leaderId,
                 leader.email AS leaderEmail,
                 memberCount,
@@ -170,6 +183,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 p.title AS title,
                 p.summary AS summary,
                 p.createdAt AS createdAt,
+                coalesce(p.categories, []) AS categories,
+                coalesce(p.difficulty, 'medium') AS difficulty,
+                coalesce(p.estimatedDuration, 4) AS estimatedDuration,
                 leader.userId AS leaderId,
                 leader.email AS leaderEmail,
                 memberCount,
@@ -213,6 +229,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 p.description AS description,
                 p.summary AS summary,
                 p.createdAt AS createdAt,
+                coalesce(p.categories, []) AS categories,
+                coalesce(p.difficulty, 'medium') AS difficulty,
+                coalesce(p.estimatedDuration, 4) AS estimatedDuration,
                 leader.userId AS leaderId,
                 leader.email AS leaderEmail,
                 coalesce(p.kanbanSprintActive, false) AS kanbanSprintActive,
@@ -367,6 +386,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
                 p.description AS description,
                 p.summary AS summary,
                 p.createdAt AS createdAt,
+                coalesce(p.categories, []) AS categories,
+                coalesce(p.difficulty, 'medium') AS difficulty,
+                coalesce(p.estimatedDuration, 4) AS estimatedDuration,
                 leader.userId AS leaderId,
                 leader.email AS leaderEmail,
                 coalesce(p.kanbanSprintActive, false) AS kanbanSprintActive,
@@ -799,11 +821,24 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
 
   private mapProjectSummary(record: { get(key: string): unknown }): ProjectSummary {
     const memberCount = Number(record.get('memberCount') ?? 0);
+    const difficultyRaw = String(record.get('difficulty') ?? 'medium');
+    const difficulty =
+      difficultyRaw === 'easy' || difficultyRaw === 'hard' ? difficultyRaw : 'medium';
+    const estimatedDuration = Number(record.get('estimatedDuration') ?? 4);
+    const categoriesRaw = record.get('categories');
+    const categories = Array.isArray(categoriesRaw)
+      ? categoriesRaw.map((c) => String(c).trim()).filter(Boolean)
+      : [];
+
     return {
       id: String(record.get('projectId')),
       title: String(record.get('title')),
       summary: String(record.get('summary') ?? ''),
       createdAt: String(record.get('createdAt')),
+      categories,
+      difficulty,
+      estimatedDuration:
+        Number.isFinite(estimatedDuration) && estimatedDuration > 0 ? estimatedDuration : 4,
       leader: {
         userId: record.get('leaderId') ? String(record.get('leaderId')) : null,
         email: record.get('leaderEmail') ? String(record.get('leaderEmail')) : null
