@@ -258,7 +258,7 @@ export function scoreMatchmakingCandidate(
   const breakdown: MatchmakingScoreBreakdown = {
     skills: skillsScore,
     availability: scoreAvailability(candidate, options),
-    reputation: roundScore(clamp(candidate.reputationScore, 0, 1) * MAX_REPUTATION_SCORE),
+    reputation: roundScore(clamp(candidate.reputationScore / 100, 0, 1) * MAX_REPUTATION_SCORE),,
     roleCoverage: scoreRoleCoverage(coverage, roles),
     categoryDomain: scoreCategoryDomain(matchingCategories, domainWeights),
     redundancyPenalty: scoreRedundancy(coverage.coveredRequiredSkills, teamMembers),
