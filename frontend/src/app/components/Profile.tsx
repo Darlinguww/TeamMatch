@@ -58,6 +58,7 @@ export function Profile() {
   const [availabilityTimeInput, setAvailabilityTimeInput] = useState("");
   const [availabilityParseInput, setAvailabilityParseInput] = useState("");
   const [parsedAvailability, setParsedAvailability] = useState<Array<{ day: string; timeSlots: Array<{ start: string; end: string }> }> | null>(null);
+  const [parsedAvailabilityInput, setParsedAvailabilityInput] = useState<string | null>(null);
   const [isParsingAvailability, setIsParsingAvailability] = useState(false);
   const [availabilityParseError, setAvailabilityParseError] = useState<string | null>(null);
   const [aiSkillError, setAiSkillError] = useState<string | null>(null);
@@ -79,6 +80,13 @@ export function Profile() {
     return skills;
   };
 
+  const resetAvailabilityParseState = () => {
+    setAvailabilityParseInput("");
+    setParsedAvailability(null);
+    setParsedAvailabilityInput(null);
+    setAvailabilityParseError(null);
+  };
+
   const handleAddPreferredTime = () => {
     const value = availabilityTimeInput.trim();
     if (!value) return;
@@ -97,7 +105,8 @@ export function Profile() {
   };
 
   const handleParseAvailabilityText = async () => {
-    if (!availabilityParseInput.trim()) {
+    const inputToParse = availabilityParseInput.trim();
+    if (!inputToParse) {
       setAvailabilityParseError('Ingresa una descripción de tu disponibilidad para analizarla.');
       return;
     }
@@ -105,10 +114,12 @@ export function Profile() {
     setAvailabilityParseError(null);
     setIsParsingAvailability(true);
     setParsedAvailability(null);
+    setParsedAvailabilityInput(null);
 
     try {
-      const result = await parseAvailabilityFromInput(availabilityParseInput.trim());
+      const result = await parseAvailabilityFromInput(inputToParse);
       setParsedAvailability(result.availability);
+      setParsedAvailabilityInput(inputToParse);
 
       if (result.availability.length > 0) {
         const formatted = result.availability.map((day) =>
@@ -134,6 +145,13 @@ export function Profile() {
     }
   };
 
+  const handleAvailabilityParseInputChange = (value: string) => {
+    setAvailabilityParseInput(value);
+    setAvailabilityParseError(null);
+    setParsedAvailability(null);
+    setParsedAvailabilityInput(null);
+  };
+
   const handleRemovePreferredTime = (time: string) => {
     setLocal((p) => {
       if (!p) return p;
@@ -155,7 +173,13 @@ export function Profile() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (hasBackendSession() && parsedAvailability && parsedAvailability.length > 0) {
+      const hasCurrentParsedAvailability =
+        parsedAvailabilityInput !== null &&
+        parsedAvailabilityInput === availabilityParseInput.trim() &&
+        parsedAvailability &&
+        parsedAvailability.length > 0;
+
+      if (hasBackendSession() && hasCurrentParsedAvailability) {
         await profileApi.updateAvailability(parsedAvailability);
       }
       const skillsToSave = local.skills
@@ -174,6 +198,7 @@ export function Profile() {
         workTypes:      [],
       });
       setIsEditing(false);
+      resetAvailabilityParseState();
       toast.success('Perfil guardado');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo guardar el perfil';
@@ -314,7 +339,7 @@ export function Profile() {
         </div>
         {isEditing ? (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { setLocal(makeLocal()); setIsEditing(false); }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setLocal(makeLocal()); resetAvailabilityParseState(); setIsEditing(false); }}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving} className="gap-2">
               {saving
                 ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />Guardando...</>
@@ -693,7 +718,7 @@ export function Profile() {
                     </div>
                     <Textarea
                       value={availabilityParseInput}
-                      onChange={(e) => setAvailabilityParseInput(e.target.value)}
+                      onChange={(e) => handleAvailabilityParseInputChange(e.target.value)}
                       placeholder="Ej: Lunes de 9 a 11 y miércoles de 18 a 20"
                       rows={3}
                     />
