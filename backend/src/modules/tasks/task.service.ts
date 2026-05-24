@@ -126,6 +126,9 @@ export class TaskService {
     }
     if (Object.prototype.hasOwnProperty.call(input, 'status')) {
       patch.status = this.parseStatus(input.status);
+      if (!isLeader && currentTask.assignedUserId !== userId) {
+        throw new ForbiddenError('Only assigned members can update task status');
+      }
       const transitions = isLeader ? LEADER_STATUS_TRANSITIONS : MEMBER_STATUS_TRANSITIONS;
       this.ensureValidStatusTransition(currentTask.status, patch.status, transitions);
     }
