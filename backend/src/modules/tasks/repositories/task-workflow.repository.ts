@@ -101,6 +101,8 @@ export class TaskWorkflowRepository {
               previousStatus,
               previousStatusKey,
               actorIsLeader OR (
+                actorIsMember
+                AND
                 actorIsAssigned
                 AND (
                   (
@@ -225,7 +227,8 @@ export class TaskWorkflowRepository {
         `MATCH (project:Proyecto)-[:TIENE_TAREA|CONTIENE]->(task:Tarea)
          WHERE task.taskId = $taskId OR task.tareaId = $taskId OR task.id = $taskId OR elementId(task) = $taskId
          MATCH (actor:Usuario {userId: $actorUserId})
-         WITH project, task, actor, coalesce(task.status, task.estado) AS previousStatus
+         OPTIONAL MATCH (actor)-[actorMembership:PERTENECE_A]->(project)
+         WITH project, task, actor, actorMembership, coalesce(task.status, task.estado) AS previousStatus
          CALL {
            WITH project
            OPTIONAL MATCH (leader:Usuario)-[leaderMembership:PERTENECE_A]->(project)
@@ -241,7 +244,9 @@ export class TaskWorkflowRepository {
               actor,
               leader,
               previousStatus,
-              leader IS NOT NULL AND leader.userId = $actorUserId AS actorIsLeader
+              coalesce(actorMembership.isLeader, false) = true
+                OR toLower(coalesce(actorMembership.role, actorMembership.rol, '')) IN ['leader', 'lider', 'líder']
+                OR (leader IS NOT NULL AND leader.userId = $actorUserId) AS actorIsLeader
          CALL {
            WITH task
            OPTIONAL MATCH (task)<-[:ASIGNADO_A]-(assignedOut:Usuario)

@@ -26,6 +26,28 @@ const INACTIVE_TASK_STATUSES = [
 ];
 
 export class TeamDetailRepository {
+  public async isProjectLeader(userId: string, teamId: string): Promise<boolean> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (:Usuario {userId: $userId})-[membership:PERTENECE_A]->(team:Proyecto)
+         WHERE (team.projectId = $teamId OR team.proyectoId = $teamId)
+           AND (
+             coalesce(membership.isLeader, false) = true
+             OR toLower(coalesce(membership.role, membership.rol, '')) IN ['leader', 'lider', 'líder']
+           )
+         RETURN 1 AS found
+         LIMIT 1`,
+        { userId, teamId: teamId.trim() }
+      );
+
+      return result.records.length > 0;
+    } finally {
+      await session.close();
+    }
+  }
+
   public async findCompositionById(teamId: string): Promise<TeamComposition | null> {
     const session = driver.session();
 

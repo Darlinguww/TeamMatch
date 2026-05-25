@@ -57,7 +57,17 @@ describe.skipIf(!hasNeo4jIntegration())('remoción de miembro — Neo4j real', (
   });
 
   it('bloquea la remoción si el miembro tiene tareas activas', async () => {
-    await expect(service.removeMember(projectId, memberId)).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.removeMember(leaderId, projectId, memberId)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('HTTP: DELETE /teams/:id/members/:memberId responde 403 si no lo pide un lider', async () => {
+    const token = signAccessToken({ sub: memberId, email: `${memberId}@test.local` });
+    const res = await request(app)
+      .delete(`/teams/${projectId}/members/${memberId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
   });
 
   it('HTTP: DELETE /teams/:id/members/:memberId responde 409 con tareas activas', async () => {
@@ -65,6 +75,17 @@ describe.skipIf(!hasNeo4jIntegration())('remoción de miembro — Neo4j real', (
     const res = await request(app)
       .delete(`/teams/${projectId}/members/${memberId}`)
       .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+  });
+
+  it('HTTP: PUT /teams/:id/members tambien bloquea remover miembros con tareas activas', async () => {
+    const token = signAccessToken({ sub: leaderId, email: `${leaderId}@test.local` });
+    const res = await request(app)
+      .put(`/teams/${projectId}/members`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ remove: [memberId] });
 
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CONFLICT');
@@ -82,7 +103,7 @@ describe.skipIf(!hasNeo4jIntegration())('remoción de miembro — Neo4j real', (
       await session.close();
     }
 
-    const result = await service.removeMember(projectId, memberId);
+    const result = await service.removeMember(leaderId, projectId, memberId);
     expect(result).toMatchObject({ teamId: projectId, memberId, removed: true });
   });
 });

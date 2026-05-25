@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { ConflictError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { TeamDetailRepository } from './repositories/team-detail.repository.js';
 import { RemoveTeamMemberResult, TeamComposition } from './types/team.types.js';
 
@@ -15,7 +15,11 @@ export class TeamsService {
     return team;
   }
 
-  public async removeMember(teamId: string, memberId: string): Promise<RemoveTeamMemberResult> {
+  public async removeMember(actorUserId: string, teamId: string, memberId: string): Promise<RemoveTeamMemberResult> {
+    if (!(await this.teamRepository.isProjectLeader(actorUserId, teamId))) {
+      throw new ForbiddenError('Forbidden');
+    }
+
     const removalResult = await this.teamRepository.removeMemberIfNoActiveTasks(teamId, memberId);
 
     if (!removalResult) {
