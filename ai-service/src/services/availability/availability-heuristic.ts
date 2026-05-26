@@ -138,10 +138,6 @@ function detectTimeBands(text: string): TimeBand[] {
     bands.push(TIME_BANDS.flexibleDay);
   }
 
-  if (bands.length === 0) {
-    bands.push(TIME_BANDS.flexibleDay);
-  }
-
   return dedupeBands(bands);
 }
 
@@ -172,6 +168,16 @@ function parseExplicitSegment(segment: string): { days: string[]; slots: TimeBan
   return { days, slots: [slot] };
 }
 
+function resolveDaysForSegment(segment: string, detected: string[]): string[] {
+  if (detected.length > 0) return detected;
+
+  if (/\b(?:despu[eé]s\s+de\s+clases?|after\s+classes?|tras\s+clases?|cuando\s+termino\s+clases?)\b/i.test(segment)) {
+    return [...WEEKDAYS_WORK];
+  }
+
+  return detected;
+}
+
 export function parseAvailabilityHeuristic(text: string): ParsedAvailabilitySlot[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
@@ -188,19 +194,13 @@ export function parseAvailabilityHeuristic(text: string): ParsedAvailabilitySlot
       continue;
     }
 
-    const days = detectDays(segment);
+    const days = resolveDaysForSegment(segment, detectDays(segment));
     if (days.length === 0) continue;
 
     const bands = detectTimeBands(segment);
-    for (const day of days) {
-      mergeSlots(byDay, day, bands);
-    }
-  }
+    if (bands.length === 0) continue;
 
-  if (byDay.size === 0) {
-    const days = detectDays(trimmed);
-    const bands = detectTimeBands(trimmed);
-    for (const day of days.length > 0 ? days : [...WEEKDAYS_WORK]) {
+    for (const day of days) {
       mergeSlots(byDay, day, bands);
     }
   }

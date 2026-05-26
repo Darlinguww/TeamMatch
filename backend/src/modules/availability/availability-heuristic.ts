@@ -178,10 +178,6 @@ function detectTimeBands(text: string): TimeBand[] {
     bands.push(TIME_BANDS.flexibleDay);
   }
 
-  if (bands.length === 0) {
-    bands.push(TIME_BANDS.flexibleDay);
-  }
-
   return dedupeBands(bands);
 }
 
@@ -199,7 +195,9 @@ function resolveDaysForSegment(segment: string, detected: Weekday[]): Weekday[] 
   if (detected.length > 0) return detected;
 
   const t = segment.toLowerCase();
-  if (/\b(?:media\s+jornada|part[-\s]?time|diarias?|habitualmente|entre\s+semana)\b/i.test(t)) {
+  if (
+    /\b(?:media\s+jornada|part[-\s]?time|diarias?|habitualmente|entre\s+semana|despu[eé]s\s+de\s+clases?|after\s+classes?|tras\s+clases?|cuando\s+termino\s+clases?)\b/i.test(t)
+  ) {
     return [...WEEKDAYS_WORK];
   }
 
@@ -265,19 +263,13 @@ export function parseAvailabilityHeuristic(text: string): AvailabilityDayInput[]
       continue;
     }
 
-    const days = detectDays(segment);
+    const days = resolveDaysForSegment(segment, detectDays(segment));
     if (days.length === 0) continue;
 
     const bands = detectTimeBands(segment);
-    for (const day of days) {
-      mergeSlots(byDay, day, bands);
-    }
-  }
+    if (bands.length === 0) continue;
 
-  if (byDay.size === 0) {
-    const days = detectDays(trimmed);
-    const bands = detectTimeBands(trimmed);
-    for (const day of days.length > 0 ? days : WEEKDAYS_WORK) {
+    for (const day of days) {
       mergeSlots(byDay, day, bands);
     }
   }

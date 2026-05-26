@@ -74,6 +74,17 @@ describe('Availability parsing', () => {
     });
   });
 
+  it('rechaza texto sin senales de disponibilidad cuando Azure falla', async () => {
+    const service = new AvailabilityParserService(
+      new FailingAiParser(),
+      new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser())
+    );
+
+    await expect(service.parse('hello, this is only a profile note')).rejects.toThrow(
+      'Availability text must include a valid weekday'
+    );
+  });
+
   it('interpreta media jornada en tardes y fines de semana flexibles', async () => {
     const parser = new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser());
     const text =

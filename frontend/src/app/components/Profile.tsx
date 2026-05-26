@@ -64,6 +64,11 @@ export function Profile() {
   const [isAddInterestOpen, setIsAddInterestOpen] = useState(false);
   const [newInterest, setNewInterest] = useState("");
 
+  const clearParsedAvailability = () => {
+    setParsedAvailability(null);
+    setAvailabilityParseError(null);
+  };
+
   const normalizeSkillName = (name: string) => name.trim().toLowerCase();
 
   const addLocalSkill = (skill: Skill) => {
@@ -82,6 +87,7 @@ export function Profile() {
   const handleAddPreferredTime = () => {
     const value = availabilityTimeInput.trim();
     if (!value) return;
+    clearParsedAvailability();
     setLocal((p) => {
       if (!p) return p;
       if (p.availability.preferredTimes.includes(value)) return p;
@@ -135,6 +141,7 @@ export function Profile() {
   };
 
   const handleRemovePreferredTime = (time: string) => {
+    clearParsedAvailability();
     setLocal((p) => {
       if (!p) return p;
       return {
@@ -173,6 +180,7 @@ export function Profile() {
         preferredTimes: local.availability.preferredTimes,
         workTypes:      [],
       });
+      setParsedAvailability(null);
       setIsEditing(false);
       toast.success('Perfil guardado');
     } catch (error) {
@@ -314,7 +322,7 @@ export function Profile() {
         </div>
         {isEditing ? (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { setLocal(makeLocal()); setIsEditing(false); }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setLocal(makeLocal()); clearParsedAvailability(); setAvailabilityParseInput(""); setIsEditing(false); }}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving} className="gap-2">
               {saving
                 ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />Guardando...</>
@@ -649,7 +657,7 @@ export function Profile() {
               <Label htmlFor="availability-hours">Horas disponibles por semana</Label>
               {isEditing
                 ? <>
-                    <Input id="availability-hours" type="number" value={local.availability.hoursPerWeek} onChange={e => setLocal(p => p ? { ...p, availability: { ...p.availability, hoursPerWeek: Number(e.target.value) || 0 } } : p)} min={0} max={40} />
+                    <Input id="availability-hours" type="number" value={local.availability.hoursPerWeek} onChange={e => { clearParsedAvailability(); setLocal(p => p ? { ...p, availability: { ...p.availability, hoursPerWeek: Number(e.target.value) || 0 } } : p); }} min={0} max={40} />
                     <p className="text-xs text-muted-foreground">Cantidad total de horas que puedes dedicar a proyectos cada semana.</p>
                   </>
                 : <p className="text-2xl font-bold">{local.availability.hoursPerWeek > 0 ? `${local.availability.hoursPerWeek}h` : "—"}</p>}
@@ -693,7 +701,7 @@ export function Profile() {
                     </div>
                     <Textarea
                       value={availabilityParseInput}
-                      onChange={(e) => setAvailabilityParseInput(e.target.value)}
+                      onChange={(e) => { clearParsedAvailability(); setAvailabilityParseInput(e.target.value); }}
                       placeholder="Ej: Lunes de 9 a 11 y miércoles de 18 a 20"
                       rows={3}
                     />
