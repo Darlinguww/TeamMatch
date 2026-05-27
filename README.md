@@ -11,7 +11,7 @@ Universidad del Norte — Diseño de Software I · 2026
 | Nombre | Rol | GitHub |
 |--------|-----|--------|
 | Darlen Cecilia Arias Alemán | DevOps + Lead Developer | @Darlinguww |
-| Andrea Carolina de la Ossa Gelves | Frontend Engineering | @adela088 |
+| Andrea Carolina de la Ossa Gelvez | Frontend Engineering | @adela088 |
 | Daniel Eduardo Cera Moran | Database Administration (DBA) | @Danielit707 |
 | Nicolas Pérez Padilla | QA & Testing + SCRUM Master | @npzzzp |
 | Jhosep Varela Regalado | Backend Engineering | @JVarelaR |
