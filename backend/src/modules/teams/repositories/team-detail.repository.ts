@@ -6,6 +6,8 @@ interface RemoveMemberRepositoryResult {
   teamId: string;
   memberId: string;
   membershipExists: boolean;
+  actorIsLeader: boolean;
+  memberIsLeader: boolean;
   activeTasks: ActiveTaskSummary[];
 }
 
@@ -98,15 +100,26 @@ export class TeamDetailRepository {
     }
   }
 
-  public async removeMemberIfNoActiveTasks(teamId: string, memberId: string): Promise<RemoveMemberRepositoryResult | null> {
+  public async removeMemberIfNoActiveTasks(
+    teamId: string,
+    memberId: string,
+    actorUserId: string
+  ): Promise<RemoveMemberRepositoryResult | null> {
     const session = driver.session();
 
     try {
       const result = await session.run(
         `MATCH (team:Proyecto)
          WHERE team.projectId = $teamId OR team.proyectoId = $teamId
+         OPTIONAL MATCH (actor:Usuario {userId: $actorUserId})-[actorMembership:PERTENECE_A]->(team)
          OPTIONAL MATCH (member:Usuario {userId: $memberId})-[membership:PERTENECE_A]->(team)
-         WITH team, member, membership
+         WITH team,
+              member,
+              membership,
+              coalesce(actorMembership.isLeader, false) = true
+                OR toLower(coalesce(actorMembership.role, actorMembership.rol, '')) IN ['leader', 'lider', 'líder'] AS actorIsLeader,
+              coalesce(membership.isLeader, false) = true
+                OR toLower(coalesce(membership.role, membership.rol, '')) IN ['leader', 'lider', 'líder'] AS memberIsLeader
          CALL {
            WITH team, member
            OPTIONAL MATCH (team)-[:TIENE_TAREA]->(task:Tarea)<-[:ASIGNADO_A]-(member)
@@ -121,14 +134,30 @@ export class TeamDetailRepository {
              status: coalesce(task.status, task.estado)
            }) AS activeTasks
          }
-         WITH team, member, membership, activeTasks, membership IS NOT NULL AS membershipExists
-         FOREACH (_ IN CASE WHEN membershipExists AND size(activeTasks) = 0 THEN [1] ELSE [] END | DELETE membership)
+         WITH team,
+              member,
+              membership,
+              activeTasks,
+              membership IS NOT NULL AS membershipExists,
+              actorIsLeader,
+              memberIsLeader
+         FOREACH (_ IN CASE
+           WHEN actorIsLeader AND membershipExists AND NOT memberIsLeader AND size(activeTasks) = 0 THEN [1]
+           ELSE []
+         END | DELETE membership)
          RETURN coalesce(team.projectId, team.proyectoId) AS teamId,
                 member.userId AS memberId,
                 membershipExists,
+                actorIsLeader,
+                memberIsLeader,
                 activeTasks
          LIMIT 1`,
-        { teamId: teamId.trim(), memberId, inactiveTaskStatuses: INACTIVE_TASK_STATUSES }
+        {
+          teamId: teamId.trim(),
+          memberId,
+          actorUserId,
+          inactiveTaskStatuses: INACTIVE_TASK_STATUSES
+        }
       );
 
       if (result.records.length === 0) {
@@ -147,6 +176,8 @@ export class TeamDetailRepository {
         teamId: String(record.get('teamId')),
         memberId: String(record.get('memberId') ?? memberId),
         membershipExists: record.get('membershipExists') === true,
+        actorIsLeader: record.get('actorIsLeader') === true,
+        memberIsLeader: record.get('memberIsLeader') === true,
         activeTasks
       };
     } finally {

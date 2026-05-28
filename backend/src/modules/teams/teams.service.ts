@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { TeamDetailRepository } from './repositories/team-detail.repository.js';
 import { RemoveTeamMemberResult, TeamComposition } from './types/team.types.js';
 
@@ -15,15 +15,23 @@ export class TeamsService {
     return team;
   }
 
-  public async removeMember(teamId: string, memberId: string): Promise<RemoveTeamMemberResult> {
-    const removalResult = await this.teamRepository.removeMemberIfNoActiveTasks(teamId, memberId);
+  public async removeMember(actorUserId: string, teamId: string, memberId: string): Promise<RemoveTeamMemberResult> {
+    const removalResult = await this.teamRepository.removeMemberIfNoActiveTasks(teamId, memberId, actorUserId);
 
     if (!removalResult) {
       throw new NotFoundError('Team not found');
     }
 
+    if (!removalResult.actorIsLeader) {
+      throw new ForbiddenError('Only project leaders can remove team members');
+    }
+
     if (!removalResult.membershipExists) {
       throw new NotFoundError('Team member not found');
+    }
+
+    if (removalResult.memberIsLeader) {
+      throw new BadRequestError('Project leaders cannot be removed from the team');
     }
 
     if (removalResult.activeTasks.length > 0) {

@@ -57,7 +57,7 @@ describe.skipIf(!hasNeo4jIntegration())('remoción de miembro — Neo4j real', (
   });
 
   it('bloquea la remoción si el miembro tiene tareas activas', async () => {
-    await expect(service.removeMember(projectId, memberId)).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.removeMember(leaderId, projectId, memberId)).rejects.toBeInstanceOf(ConflictError);
   });
 
   it('HTTP: DELETE /teams/:id/members/:memberId responde 409 con tareas activas', async () => {
@@ -82,7 +82,7 @@ describe.skipIf(!hasNeo4jIntegration())('remoción de miembro — Neo4j real', (
       await session.close();
     }
 
-    const result = await service.removeMember(projectId, memberId);
+    const result = await service.removeMember(leaderId, projectId, memberId);
     expect(result).toMatchObject({ teamId: projectId, memberId, removed: true });
   });
 });

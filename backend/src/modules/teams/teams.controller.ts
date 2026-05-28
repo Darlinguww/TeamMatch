@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { BadRequestError } from '../../shared/errors/HttpErrors.js';
+import { BadRequestError, UnauthorizedError } from '../../shared/errors/HttpErrors.js';
 import { asyncHandler } from '../../shared/middlewares/asyncHandler.js';
 import { RemoveTeamMemberParamsDto, TeamIdParamsDto } from './dto/team-params.dto.js';
 import { TeamsService } from './teams.service.js';
@@ -19,14 +19,18 @@ export class TeamsController {
     res.status(200).json({ team });
   });
 
-  public removeMember = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+  public removeMember = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) {
+      throw new UnauthorizedError('Unauthorized');
+    }
+
     const params = res.locals.removeTeamMemberParams as RemoveTeamMemberParamsDto | undefined;
 
     if (!params) {
       throw new BadRequestError('Team member route parameter validation is required');
     }
 
-    const result = await this.teamsService.removeMember(params.teamId, params.memberId);
+    const result = await this.teamsService.removeMember(req.user.userId, params.teamId, params.memberId);
 
     res.status(200).json(result);
   });

@@ -131,9 +131,29 @@ describe('API HTTP con Supertest', () => {
     });
   });
 
+  it('protege el ranking de matchmaking del proyecto detras de autenticacion', async () => {
+    const response = await request(app)
+      .get('/projects/project-1/match')
+      .expect(401);
+
+    expect(response.body.error).toMatchObject({
+      code: 'UNAUTHORIZED'
+    });
+  });
+
   it('protege el endpoint legacy /match/:id/score detras de autenticacion', async () => {
     const response = await request(app)
       .get('/match/user-1/score')
+      .expect(401);
+
+    expect(response.body.error).toMatchObject({
+      code: 'UNAUTHORIZED'
+    });
+  });
+
+  it('protege la remocion de miembros de equipo detras de autenticacion', async () => {
+    const response = await request(app)
+      .delete('/teams/project-1/members/user-2')
       .expect(401);
 
     expect(response.body.error).toMatchObject({

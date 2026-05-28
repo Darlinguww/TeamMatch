@@ -44,6 +44,7 @@ export interface ReviewTaskWorkflowRepositoryResult extends ReviewTaskResult {
 const PENDING_STATUS_KEYS = ['pendiente', 'pending', ''];
 const IN_PROGRESS_STATUS_KEYS = ['en_progreso', 'in_progress'];
 const IN_REVIEW_STATUS_KEYS = ['en_revision', 'in_review'];
+const COMPLETED_STATUS_KEYS = ['completada', 'completed'];
 
 export class TaskWorkflowRepository {
   public async updateStatus(input: UpdateTaskStatusInput): Promise<UpdateTaskStatusRepositoryResult | null> {
@@ -100,7 +101,28 @@ export class TaskWorkflowRepository {
               leader,
               previousStatus,
               previousStatusKey,
-              actorIsLeader OR (
+              (
+                actorIsLeader
+                AND (
+                  previousStatusKey = $normalizedStatus
+                  OR (
+                    previousStatusKey IN $pendingStatusKeys
+                    AND $normalizedStatus IN $inProgressStatusKeys
+                  )
+                  OR (
+                    previousStatusKey IN $inProgressStatusKeys
+                    AND $normalizedStatus IN $inReviewStatusKeys
+                  )
+                  OR (
+                    previousStatusKey IN $inReviewStatusKeys
+                    AND $normalizedStatus IN $inProgressStatusKeys
+                  )
+                  OR (
+                    previousStatusKey IN $inReviewStatusKeys
+                    AND $normalizedStatus IN $completedStatusKeys
+                  )
+                )
+              ) OR (
                 actorIsAssigned
                 AND (
                   (
@@ -192,6 +214,7 @@ export class TaskWorkflowRepository {
           pendingStatusKeys: PENDING_STATUS_KEYS,
           inProgressStatusKeys: IN_PROGRESS_STATUS_KEYS,
           inReviewStatusKeys: IN_REVIEW_STATUS_KEYS,
+          completedStatusKeys: COMPLETED_STATUS_KEYS,
           eventId: input.eventId,
           notificationId: input.notificationId,
           occurredAt: input.occurredAt
