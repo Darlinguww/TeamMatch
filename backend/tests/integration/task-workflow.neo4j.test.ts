@@ -90,6 +90,12 @@ describe.skipIf(!hasNeo4jIntegration())('ciclo de vida de tarea — Neo4j real',
     })).rejects.toBeInstanceOf(ForbiddenError);
   });
 
+  it('impide que el líder salte directamente a completada fuera de revisión', async () => {
+    await expect(
+      service.updateStatus(httpGraph.taskId, httpGraph.leaderId, { status: 'completada' })
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
   it('permite al líder aprobar la tarea tras la revisión', async () => {
     const result = await service.reviewTask(graph.taskId, graph.leaderId, {
       decision: 'approved',

@@ -111,7 +111,7 @@ describe.skipIf(!hasNeo4jIntegration())('Historias de usuario — equipos y Kanb
 
     it('el servicio bloquea la remoción con ConflictError y lista tareas activas', async () => {
       await expect(
-        teamsService.removeMember(teamGraph.projectId, teamGraph.memberId)
+        teamsService.removeMember(teamGraph.leaderId, teamGraph.projectId, teamGraph.memberId)
       ).rejects.toBeInstanceOf(ConflictError);
     });
   });

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { ReviewTaskDto } from './dto/review-task.dto.js';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto.js';
 import { TaskWorkflowRepository } from './repositories/task-workflow.repository.js';
@@ -82,6 +82,6 @@ export class TasksService {
       return 'completada';
     }
 
-    return status.trim();
+    throw new BadRequestError('Estado no valido');
   }
 }

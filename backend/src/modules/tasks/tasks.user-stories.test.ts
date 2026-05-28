@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { TaskWorkflowRepository } from './repositories/task-workflow.repository.js';
 import { TasksService } from './tasks.service.js';
 
@@ -89,6 +89,20 @@ describe('HU-4 — miembro avanza En proceso → Para revisión', () => {
     await expect(
       service.updateStatus('task-1', 'member-1', { status: 'completada' })
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('rechaza estados desconocidos antes de tocar el repositorio', async () => {
+    const mockRepo = {
+      updateStatus: vi.fn(),
+      reviewTask: vi.fn()
+    } as unknown as TaskWorkflowRepository;
+
+    const service = new TasksService(mockRepo);
+
+    await expect(
+      service.updateStatus('task-1', 'leader-1', { status: 'totally_invalid' })
+    ).rejects.toBeInstanceOf(BadRequestError);
+    expect(mockRepo.updateStatus).not.toHaveBeenCalled();
   });
 });
 
