@@ -108,7 +108,7 @@ let service: TaskService;
 describe('TaskService seguridad y estados', () => {
   beforeEach(() => {
     repository = new FakeTaskRepository();
-    repository.projectMembers.set('project-1', new Set(['leader-1', 'member-1']));
+    repository.projectMembers.set('project-1', new Set(['leader-1', 'member-1', 'member-2']));
     service = new TaskService(repository);
   });
 
@@ -137,7 +137,10 @@ describe('TaskService seguridad y estados', () => {
   });
 
   it('aplica el flujo Kanban: miembro avanza hasta revision y el lider completa', async () => {
-    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Flujo feliz' });
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Flujo feliz',
+      userAsigned: 'member-1'
+    });
 
     await expect(service.updateTask('member-1', task.taskId, {
       status: 'en progreso'
@@ -157,7 +160,10 @@ describe('TaskService seguridad y estados', () => {
   });
 
   it('permite rechazar una tarea en revision devolviendola a en progreso', async () => {
-    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Rechazo' });
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Rechazo',
+      userAsigned: 'member-1'
+    });
 
     await service.updateTask('member-1', task.taskId, { status: 'en progreso' });
     await service.updateTask('member-1', task.taskId, { status: 'en revision' });
@@ -167,8 +173,23 @@ describe('TaskService seguridad y estados', () => {
     })).resolves.toMatchObject({ status: 'en progreso' });
   });
 
+  it('impide que un miembro no asignado cambie el estado via PUT legado', async () => {
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Asignada',
+      userAsigned: 'member-1'
+    });
+
+    await expect(service.updateTask('member-2', task.taskId, {
+      status: 'en progreso'
+    })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(service.getTask('member-1', task.taskId)).resolves.toMatchObject({ status: 'pendiente' });
+  });
+
   it('rechaza saltos fuera de la maquina de estados', async () => {
-    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Saltos invalidos' });
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Saltos invalidos',
+      userAsigned: 'member-1'
+    });
 
     await expect(service.updateTask('member-1', task.taskId, {
       status: 'en revision'
@@ -180,7 +201,10 @@ describe('TaskService seguridad y estados', () => {
   });
 
   it('no permite reabrir una tarea completada', async () => {
-    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Terminal' });
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Terminal',
+      userAsigned: 'member-1'
+    });
 
     await service.updateTask('member-1', task.taskId, { status: 'en progreso' });
     await service.updateTask('member-1', task.taskId, { status: 'en revision' });
