@@ -171,6 +171,33 @@ function serializeCandidate(value: unknown): MatchmakingCandidate | null {
 }
 
 export class MatchmakingRepository {
+  public async findProjectLeader(projectId: string): Promise<string | null> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (project:Proyecto)
+         WHERE project.projectId = $projectId OR project.proyectoId = $projectId
+         OPTIONAL MATCH (leader:Usuario)-[rel:PERTENECE_A]->(project)
+         WHERE coalesce(rel.rol, rel.role) = 'lider'
+            OR coalesce(rel.isLeader, false) = true
+            OR toLower(coalesce(rel.role, rel.rol, '')) IN ['leader', 'lider', 'líder']
+         RETURN leader.userId AS leaderId
+         LIMIT 1`,
+        { projectId }
+      );
+
+      if (!result.records[0]) {
+        return null;
+      }
+
+      const leaderId = result.records[0].get('leaderId');
+      return leaderId ? String(leaderId) : null;
+    } finally {
+      await session.close();
+    }
+  }
+
   public async findProjectContext(projectId: string): Promise<MatchmakingProjectContext | null> {
     const session = driver.session();
 
