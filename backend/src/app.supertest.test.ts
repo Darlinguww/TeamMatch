@@ -131,6 +131,16 @@ describe('API HTTP con Supertest', () => {
     });
   });
 
+  it('protege el ranking de candidatos de matchmaking detras de autenticacion', async () => {
+    const response = await request(app)
+      .get('/projects/project-1/match')
+      .expect(401);
+
+    expect(response.body.error).toMatchObject({
+      code: 'UNAUTHORIZED'
+    });
+  });
+
   it('protege el endpoint legacy /match/:id/score detras de autenticacion', async () => {
     const response = await request(app)
       .get('/match/user-1/score')

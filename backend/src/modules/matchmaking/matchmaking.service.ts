@@ -1,6 +1,7 @@
-import { NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { MatchmakingRepository } from './matchmaking.repository.js';
 import type {
+  MatchmakingProjectContext,
   MatchmakingOptions,
   MatchmakingResult,
   OpenProjectRecommendation,
@@ -13,14 +14,31 @@ import {
   sortMatchmakingResults
 } from './matchmaking.utils.js';
 
+export interface MatchmakingRepositoryPort {
+  findProjectContext(projectId: string): Promise<MatchmakingProjectContext | null>;
+  findProjectLeader(projectId: string): Promise<string | null>;
+}
+
 export class MatchmakingService {
-  public constructor(private readonly matchmakingRepository: MatchmakingRepository) {}
+  public constructor(private readonly matchmakingRepository: MatchmakingRepositoryPort = new MatchmakingRepository()) {}
 
   public async getProjectMatches(
+    actorUserId: string,
     projectId: string,
     input: { limit: number; offset: number; includeExistingMembers: boolean }
   ): Promise<ProjectMatchmakingPage> {
-    const result = await this.scoreProjectCandidates(projectId, {
+    const normalizedProjectId = projectId.trim();
+    const leaderId = await this.matchmakingRepository.findProjectLeader(normalizedProjectId);
+
+    if (!leaderId) {
+      throw new NotFoundError('Project not found');
+    }
+
+    if (leaderId !== actorUserId) {
+      throw new ForbiddenError('Only project leaders can view matchmaking candidates');
+    }
+
+    const result = await this.scoreProjectCandidates(normalizedProjectId, {
       includeProjectMembers: input.includeExistingMembers
     });
     const matches = result.matches.slice(input.offset, input.offset + input.limit);
