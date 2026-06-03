@@ -11,7 +11,7 @@ import { type Skill } from "../lib/mockData";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { useAuth } from "../lib/authContext";
-import { profileApi } from "../lib/profileApi";
+import { profileApi, type ApiAvailabilityDay } from "../lib/profileApi";
 import { hasBackendSession, parseAvailabilityFromInput, suggestSkillsFromInput } from "../lib/aiFeatures";
 import { SKILL_SUGGESTIONS } from "../lib/skillCatalog";
 import { skillCategoryColors } from "../lib/badgeStyles";
@@ -29,6 +29,17 @@ const skillLevels = {
   intermediate: { bars: 2 },
   advanced:     { bars: 3 },
   expert:       { bars: 4 },
+};
+
+const formatAvailabilityDay = (day: ApiAvailabilityDay) =>
+  `${day.day} ${day.timeSlots.map((slot) => `${slot.start}-${slot.end}`).join(', ')}`;
+
+const removeAvailabilityDayByLabel = (availability: ApiAvailabilityDay[], label: string) => {
+  const next = availability.filter((day) => formatAvailabilityDay(day) !== label);
+  return {
+    availability: next,
+    removed: next.length !== availability.length,
+  };
 };
 
 export function Profile() {
@@ -57,7 +68,10 @@ export function Profile() {
   const [newSkill,        setNewSkill]        = useState<Partial<Skill>>({ name: "", category: "technical", level: "beginner" });
   const [availabilityTimeInput, setAvailabilityTimeInput] = useState("");
   const [availabilityParseInput, setAvailabilityParseInput] = useState("");
-  const [parsedAvailability, setParsedAvailability] = useState<Array<{ day: string; timeSlots: Array<{ start: string; end: string }> }> | null>(null);
+  const [parsedAvailability, setParsedAvailability] = useState<ApiAvailabilityDay[] | null>(null);
+  const [availabilityDraft, setAvailabilityDraft] = useState<ApiAvailabilityDay[] | null>(null);
+  const [lastSyncedAvailability, setLastSyncedAvailability] = useState<ApiAvailabilityDay[] | null>(null);
+  const [availabilityDraftDirty, setAvailabilityDraftDirty] = useState(false);
   const [isParsingAvailability, setIsParsingAvailability] = useState(false);
   const [availabilityParseError, setAvailabilityParseError] = useState<string | null>(null);
   const [aiSkillError, setAiSkillError] = useState<string | null>(null);
@@ -96,6 +110,13 @@ export function Profile() {
     setAvailabilityTimeInput('');
   };
 
+  const discardPendingAvailabilityChanges = () => {
+    setParsedAvailability(null);
+    setAvailabilityDraft(lastSyncedAvailability);
+    setAvailabilityDraftDirty(false);
+    setAvailabilityParseError(null);
+  };
+
   const handleParseAvailabilityText = async () => {
     if (!availabilityParseInput.trim()) {
       setAvailabilityParseError('Ingresa una descripción de tu disponibilidad para analizarla.');
@@ -109,11 +130,11 @@ export function Profile() {
     try {
       const result = await parseAvailabilityFromInput(availabilityParseInput.trim());
       setParsedAvailability(result.availability);
+      setAvailabilityDraft(result.availability);
+      setAvailabilityDraftDirty(true);
 
       if (result.availability.length > 0) {
-        const formatted = result.availability.map((day) =>
-          `${day.day} ${day.timeSlots.map((slot) => `${slot.start}-${slot.end}`).join(', ')}`
-        );
+        const formatted = result.availability.map(formatAvailabilityDay);
         setLocal((p) => p ? {
           ...p,
           availability: {
@@ -135,6 +156,19 @@ export function Profile() {
   };
 
   const handleRemovePreferredTime = (time: string) => {
+    const sourceAvailability = availabilityDraft ?? lastSyncedAvailability;
+    if (sourceAvailability) {
+      const { availability, removed } = removeAvailabilityDayByLabel(sourceAvailability, time);
+      if (removed) {
+        setAvailabilityDraft(availability);
+        setAvailabilityDraftDirty(true);
+        setParsedAvailability((current) => current
+          ? removeAvailabilityDayByLabel(current, time).availability
+          : current
+        );
+      }
+    }
+
     setLocal((p) => {
       if (!p) return p;
       return {
@@ -155,8 +189,9 @@ export function Profile() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (hasBackendSession() && parsedAvailability && parsedAvailability.length > 0) {
-        await profileApi.updateAvailability(parsedAvailability);
+      const availabilityPayload = availabilityDraft ?? [];
+      if (hasBackendSession() && availabilityDraftDirty) {
+        await profileApi.updateAvailability(availabilityPayload);
       }
       const skillsToSave = local.skills
         .map((s) => ({ ...s, name: s.name.trim() }))
@@ -173,6 +208,13 @@ export function Profile() {
         preferredTimes: local.availability.preferredTimes,
         workTypes:      [],
       });
+      if (availabilityDraftDirty) {
+        setLastSyncedAvailability(availabilityPayload);
+        setAvailabilityDraft(availabilityPayload);
+        setAvailabilityDraftDirty(false);
+      }
+      setParsedAvailability(null);
+      setAvailabilityParseError(null);
       setIsEditing(false);
       toast.success('Perfil guardado');
     } catch (error) {
@@ -314,7 +356,7 @@ export function Profile() {
         </div>
         {isEditing ? (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { setLocal(makeLocal()); setIsEditing(false); }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setLocal(makeLocal()); discardPendingAvailabilityChanges(); setIsEditing(false); }}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving} className="gap-2">
               {saving
                 ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />Guardando...</>
