@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scoreDiscoveryAgainstProject, scoreMatchmakingCandidate } from './matchmaking.utils.js';
+import { scoreDiscoveryAgainstProject, scoreMatchmakingCandidate, skillsAreEquivalent } from './matchmaking.utils.js';
 import type { MatchmakingCandidate, MatchmakingRoleRequirement } from './matchmaking.types.js';
 
 const roles: MatchmakingRoleRequirement[] = [
@@ -159,6 +159,29 @@ describe('matchmaking.utils — pesos 60/20/20', () => {
     );
 
     expect(result.coverage.coveredRequiredSkills).not.toContain('react');
+    expect(result.breakdown.skills).toBe(0);
+    expect(result.score).toBeLessThanOrEqual(25);
+  });
+
+  it('no trata habilidades distintas como equivalentes por subcadenas', () => {
+    const javaRoles: MatchmakingRoleRequirement[] = [
+      { name: 'Backend', requiredSkills: ['Java'] }
+    ];
+    const result = scoreMatchmakingCandidate(
+      buildCandidate({
+        experience: [],
+        profileSkills: ['JavaScript'],
+        availability: [{ day: 'monday', timeSlots: [{ start: '09:00', end: '17:00' }] }],
+        reputationScore: 1
+      }),
+      javaRoles,
+      [],
+      {}
+    );
+
+    expect(skillsAreEquivalent('Java', 'JavaScript')).toBe(false);
+    expect(skillsAreEquivalent('SQL', 'MySQL')).toBe(false);
+    expect(result.coverage.coveredRequiredSkills).toHaveLength(0);
     expect(result.breakdown.skills).toBe(0);
     expect(result.score).toBeLessThanOrEqual(25);
   });
