@@ -74,6 +74,24 @@ describe('Availability parsing', () => {
     });
   });
 
+  it('no fabrica disponibilidad semanal para texto vago cuando Azure falla', async () => {
+    const service = new AvailabilityParserService(
+      new FailingAiParser(),
+      new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser())
+    );
+
+    await expect(service.parse('horarios flexibles')).rejects.toThrow('Availability text must include a valid weekday');
+  });
+
+  it('interpreta franjas naturales solo cuando hay dia y banda horaria', async () => {
+    const parser = new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser());
+
+    await expect(parser.parse('lunes en la tarde')).resolves.toEqual([{
+      day: 'monday',
+      timeSlots: [{ start: '14:00', end: '18:00' }]
+    }]);
+  });
+
   it('interpreta media jornada en tardes y fines de semana flexibles', async () => {
     const parser = new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser());
     const text =

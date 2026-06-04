@@ -90,6 +90,8 @@ function mergeSlots(
   day: Weekday,
   slots: TimeSlotInput[]
 ): void {
+  if (slots.length === 0) return;
+
   const existing = byDay.get(day) ?? [];
   const keys = new Set(existing.map((s) => `${s.start}-${s.end}`));
   for (const slot of slots) {
@@ -175,10 +177,6 @@ function detectTimeBands(text: string): TimeBand[] {
   }
 
   if (/\b(?:remoto|remote|flexible|horarios?\s+flexibles?)\b/i.test(t)) {
-    bands.push(TIME_BANDS.flexibleDay);
-  }
-
-  if (bands.length === 0) {
     bands.push(TIME_BANDS.flexibleDay);
   }
 
@@ -277,7 +275,7 @@ export function parseAvailabilityHeuristic(text: string): AvailabilityDayInput[]
   if (byDay.size === 0) {
     const days = detectDays(trimmed);
     const bands = detectTimeBands(trimmed);
-    for (const day of days.length > 0 ? days : WEEKDAYS_WORK) {
+    for (const day of days) {
       mergeSlots(byDay, day, bands);
     }
   }
