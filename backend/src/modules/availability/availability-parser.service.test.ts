@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AvailabilityParserService } from './availability-parser.service.js';
+import { parseAvailabilityHeuristic } from './availability-heuristic.js';
 import { ManualAvailabilityParser } from './manual-availability.parser.js';
 import { NaturalLanguageAvailabilityParser } from './natural-language-availability.parser.js';
 import { AvailabilityParser } from './types/availability-parser.types.js';
@@ -85,5 +86,9 @@ describe('Availability parsing', () => {
     expect(result.some((day) => day.day === 'monday' && day.timeSlots.some((s) => s.start === '14:00' && s.end === '18:00'))).toBe(true);
     expect(result.some((day) => day.day === 'saturday')).toBe(true);
     expect(result.some((day) => day.day === 'sunday')).toBe(true);
+  });
+
+  it('no inventa disponibilidad semanal si el texto flexible no menciona dias', () => {
+    expect(parseAvailabilityHeuristic('Trabajo remoto, horarios flexibles')).toEqual([]);
   });
 });

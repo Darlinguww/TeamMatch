@@ -46,6 +46,10 @@ function foldAccents(value: string): string {
   return value.normalize('NFD').replace(/\p{M}/gu, '');
 }
 
+function compactSkillName(skillName: string): string {
+  return foldAccents(normalizeSkillName(skillName)).replace(/[^a-z0-9]+/g, '');
+}
+
 function skillTokens(skillName: string): string[] {
   return foldAccents(normalizeSkillName(skillName))
     .split(/[^a-z0-9]+/)
@@ -101,10 +105,9 @@ export function skillsAreEquivalent(requiredSkill: string, candidateSkill: strin
     return true;
   }
 
-  const shorter = requiredFolded.length <= candidateFolded.length ? requiredFolded : candidateFolded;
-  const longer = shorter === requiredFolded ? candidateFolded : requiredFolded;
-
-  if (shorter.length >= 3 && longer.includes(shorter)) {
+  const requiredCompact = compactSkillName(requiredSkill);
+  const candidateCompact = compactSkillName(candidateSkill);
+  if (requiredCompact.length >= 3 && requiredCompact === candidateCompact) {
     return true;
   }
 
