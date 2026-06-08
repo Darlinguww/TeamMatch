@@ -40,6 +40,29 @@ export class Neo4jTaskRepository implements TaskRepositoryContract {
     }
   }
 
+  public async isUserAssignedToTask(userId: string, taskId: string): Promise<boolean> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (task:Tarea)
+         WHERE task.taskId = $taskId OR task.tareaId = $taskId OR task.id = $taskId
+         OPTIONAL MATCH (:Usuario {userId: $userId})-[assignmentOut:ASIGNADO_A]->(task)
+         OPTIONAL MATCH (task)-[assignmentIn:ASIGNADO_A]->(:Usuario {userId: $userId})
+         WITH task, assignmentOut, assignmentIn
+         WHERE assignmentOut IS NOT NULL
+            OR assignmentIn IS NOT NULL
+            OR toString(coalesce(task.assignedUserId, task.asignadoA, task.userAsigned, '')) = $userId
+         RETURN 1 AS found
+         LIMIT 1`,
+        { userId, taskId }
+      );
+      return result.records.length > 0;
+    } finally {
+      await session.close();
+    }
+  }
+
   public async getProjectIdForTask(taskId: string): Promise<string | null> {
     const session = driver.session();
 

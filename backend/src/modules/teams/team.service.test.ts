@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BadRequestError, ForbiddenError } from '../../shared/errors/HttpErrors.js';
-import { TeamMemberInput, TeamRepository, TeamService } from './team.service.js';
+import { BadRequestError, ConflictError, ForbiddenError } from '../../shared/errors/HttpErrors.js';
+import { ActiveAssignedTask, TeamMemberInput, TeamRepository, TeamService } from './team.service.js';
 
 class FakeTeamRepository implements TeamRepository {
   public leaders = new Map<string, string>();
   public users = new Set<string>();
   public memberships = new Map<string, Map<string, string>>();
+  public activeTasks = new Map<string, ActiveAssignedTask[]>();
 
   public async isProjectLeader(userId: string, projectId: string): Promise<boolean> {
     return this.leaders.get(projectId) === userId;
@@ -35,6 +36,10 @@ class FakeTeamRepository implements TeamRepository {
     return userIds
       .filter((userId) => memberships.has(userId))
       .map((userId) => ({ userId, rol: memberships.get(userId) ?? '' }));
+  }
+
+  public async findActiveAssignedTasks(projectId: string, userIds: string[]): Promise<ActiveAssignedTask[]> {
+    return (this.activeTasks.get(projectId) ?? []).filter((task) => userIds.includes(task.userId));
   }
 
   public async addMembers(projectId: string, members: TeamMemberInput[]): Promise<string[]> {
@@ -87,6 +92,37 @@ describe('TeamService integrantes', () => {
     await expect(service.updateMembers('leader-1', 'project-1', {
       remove: ['leader-1']
     })).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('bloquea remociones masivas que dejarian tareas activas sin integrante', async () => {
+    repository.activeTasks.set('project-1', [{
+      userId: 'member-1',
+      taskId: 'task-1',
+      title: 'Implementar endpoint critico',
+      status: 'en progreso'
+    }]);
+
+    await expect(service.updateMembers('leader-1', 'project-1', {
+      remove: ['member-1']
+    })).rejects.toBeInstanceOf(ConflictError);
+
+    await expect(service.updateMembers('leader-1', 'project-1', {
+      add: [{ userId: 'member-2', rol: 'qa' }]
+    })).resolves.toEqual({
+      projectId: 'project-1',
+      added: ['member-2'],
+      removed: []
+    });
+
+    await expect(service.updateMembers('leader-1', 'project-1', {
+      remove: ['member-1']
+    })).rejects.toMatchObject({
+      details: expect.objectContaining({
+        activeTaskCount: 1,
+        userIds: ['member-1']
+      })
+    });
+    expect(repository.memberships.get('project-1')?.has('member-1')).toBe(true);
   });
 
   it('valida usuarios inexistentes y payloads vacios', async () => {
