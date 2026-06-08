@@ -1,5 +1,21 @@
 ﻿import { driver } from '../../../database/neo4j.js';
-import { TeamMemberInput, TeamRepository as TeamRepositoryContract } from '../team.service.js';
+import { ActiveAssignedTask, TeamMemberInput, TeamRepository as TeamRepositoryContract } from '../team.service.js';
+
+const INACTIVE_TASK_STATUSES = [
+  'done',
+  'completed',
+  'cancelled',
+  'canceled',
+  'closed',
+  'finalizada',
+  'finalizado',
+  'completada',
+  'completado',
+  'cancelada',
+  'cancelado',
+  'cerrada',
+  'cerrado'
+];
 
 export class Neo4jTeamRepository implements TeamRepositoryContract {
   public async isProjectLeader(userId: string, projectId: string): Promise<boolean> {
@@ -106,6 +122,46 @@ export class Neo4jTeamRepository implements TeamRepositoryContract {
       return result.records.map((record) => ({
         userId: String(record.get('userId')),
         rol: String(record.get('rol') ?? '')
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async findActiveAssignedTasks(projectId: string, userIds: string[]): Promise<ActiveAssignedTask[]> {
+    if (userIds.length === 0) {
+      return [];
+    }
+
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (project:Proyecto)
+         WHERE project.projectId = $projectId OR project.proyectoId = $projectId
+         MATCH (user:Usuario)-[:PERTENECE_A]->(project)
+         WHERE user.userId IN $userIds
+         MATCH (project)-[:TIENE_TAREA|CONTIENE]->(task:Tarea)
+         WHERE NOT toLower(coalesce(task.status, task.estado, 'active')) IN $inactiveTaskStatuses
+         OPTIONAL MATCH (user)-[assignmentOut:ASIGNADO_A]->(task)
+         OPTIONAL MATCH (task)-[assignmentIn:ASIGNADO_A]->(user)
+         WITH DISTINCT user, task, assignmentOut, assignmentIn
+         WHERE assignmentOut IS NOT NULL
+            OR assignmentIn IS NOT NULL
+            OR toString(coalesce(task.assignedUserId, task.asignadoA, task.userAsigned, '')) = user.userId
+         RETURN user.userId AS userId,
+                coalesce(task.taskId, task.tareaId, task.id, elementId(task)) AS taskId,
+                coalesce(task.title, task.titulo, task.name, task.nombre, '') AS title,
+                coalesce(task.status, task.estado) AS status
+         ORDER BY user.userId, title, taskId`,
+        { projectId: projectId.trim(), userIds, inactiveTaskStatuses: INACTIVE_TASK_STATUSES }
+      );
+
+      return result.records.map((record) => ({
+        userId: String(record.get('userId')),
+        taskId: String(record.get('taskId')),
+        title: String(record.get('title') ?? ''),
+        status: record.get('status') == null ? null : String(record.get('status'))
       }));
     } finally {
       await session.close();

@@ -20,6 +20,7 @@ const LEADER_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
 export interface TaskRepository {
   isUserInProject(userId: string, projectId: string): Promise<boolean>;
   isUserInProjectByTask(userId: string, taskId: string): Promise<boolean>;
+  isUserAssignedToTask?(userId: string, taskId: string): Promise<boolean>;
   isUserProjectLeader?(userId: string, projectId: string): Promise<boolean>;
   isUserProjectLeaderByTask?(userId: string, taskId: string): Promise<boolean>;
   findProjectLeaderId?(projectId: string): Promise<string | null>;
@@ -127,6 +128,7 @@ export class TaskService {
     if (Object.prototype.hasOwnProperty.call(input, 'status')) {
       patch.status = this.parseStatus(input.status);
       const transitions = isLeader ? LEADER_STATUS_TRANSITIONS : MEMBER_STATUS_TRANSITIONS;
+      await this.ensureStatusUpdateAllowed(userId, taskId, currentTask, isLeader);
       this.ensureValidStatusTransition(currentTask.status, patch.status, transitions);
     }
     if (
@@ -253,6 +255,27 @@ export class TaskService {
     if (!hasAccess) {
       throw new ForbiddenError('Forbidden');
     }
+  }
+
+  private async ensureStatusUpdateAllowed(
+    userId: string,
+    taskId: string,
+    currentTask: Task,
+    isLeader: boolean
+  ): Promise<void> {
+    if (isLeader) {
+      return;
+    }
+
+    if (currentTask.assignedUserId === userId) {
+      return;
+    }
+
+    if (this.repository.isUserAssignedToTask && await this.repository.isUserAssignedToTask(userId, taskId)) {
+      return;
+    }
+
+    throw new ForbiddenError('Only the assigned user can update task status');
   }
 
   private parseTitle(value: unknown): string {

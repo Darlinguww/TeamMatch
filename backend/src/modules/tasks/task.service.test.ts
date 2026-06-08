@@ -108,7 +108,7 @@ let service: TaskService;
 describe('TaskService seguridad y estados', () => {
   beforeEach(() => {
     repository = new FakeTaskRepository();
-    repository.projectMembers.set('project-1', new Set(['leader-1', 'member-1']));
+    repository.projectMembers.set('project-1', new Set(['leader-1', 'member-1', 'member-2']));
     service = new TaskService(repository);
   });
 
@@ -137,7 +137,10 @@ describe('TaskService seguridad y estados', () => {
   });
 
   it('aplica el flujo Kanban: miembro avanza hasta revision y el lider completa', async () => {
-    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Flujo feliz' });
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Flujo feliz',
+      userAsigned: 'member-1'
+    });
 
     await expect(service.updateTask('member-1', task.taskId, {
       status: 'en progreso'
@@ -157,7 +160,10 @@ describe('TaskService seguridad y estados', () => {
   });
 
   it('permite rechazar una tarea en revision devolviendola a en progreso', async () => {
-    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Rechazo' });
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Rechazo',
+      userAsigned: 'member-1'
+    });
 
     await service.updateTask('member-1', task.taskId, { status: 'en progreso' });
     await service.updateTask('member-1', task.taskId, { status: 'en revision' });
@@ -168,7 +174,10 @@ describe('TaskService seguridad y estados', () => {
   });
 
   it('rechaza saltos fuera de la maquina de estados', async () => {
-    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Saltos invalidos' });
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Saltos invalidos',
+      userAsigned: 'member-1'
+    });
 
     await expect(service.updateTask('member-1', task.taskId, {
       status: 'en revision'
@@ -180,7 +189,10 @@ describe('TaskService seguridad y estados', () => {
   });
 
   it('no permite reabrir una tarea completada', async () => {
-    const task = await service.createProjectTask('leader-1', 'project-1', { title: 'Terminal' });
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Terminal',
+      userAsigned: 'member-1'
+    });
 
     await service.updateTask('member-1', task.taskId, { status: 'en progreso' });
     await service.updateTask('member-1', task.taskId, { status: 'en revision' });
@@ -197,6 +209,22 @@ describe('TaskService seguridad y estados', () => {
     await expect(service.updateTask('member-1', task.taskId, {
       title: 'Cambio no permitido'
     })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('impide que un miembro cambie el estado de una tarea asignada a otro miembro', async () => {
+    const task = await service.createProjectTask('leader-1', 'project-1', {
+      title: 'Tarea de otro miembro',
+      userAsigned: 'member-1'
+    });
+
+    await expect(service.updateTask('member-2', task.taskId, {
+      status: 'en progreso'
+    })).rejects.toBeInstanceOf(ForbiddenError);
+
+    await expect(service.getTask('leader-1', task.taskId)).resolves.toMatchObject({
+      status: 'pendiente',
+      assignedUserId: 'member-1'
+    });
   });
 
   it('protege lectura, actualizacion y borrado contra IDOR', async () => {
