@@ -6,6 +6,7 @@ interface RemoveMemberRepositoryResult {
   teamId: string;
   memberId: string;
   membershipExists: boolean;
+  memberIsLeader: boolean;
   activeTasks: ActiveTaskSummary[];
 }
 
@@ -26,6 +27,46 @@ const INACTIVE_TASK_STATUSES = [
 ];
 
 export class TeamDetailRepository {
+  public async isProjectMember(userId: string, teamId: string): Promise<boolean> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (:Usuario {userId: $userId})-[:PERTENECE_A]->(team:Proyecto)
+         WHERE team.projectId = $teamId OR team.proyectoId = $teamId
+         RETURN 1 AS found
+         LIMIT 1`,
+        { userId, teamId: teamId.trim() }
+      );
+
+      return result.records.length > 0;
+    } finally {
+      await session.close();
+    }
+  }
+
+  public async isProjectLeader(userId: string, teamId: string): Promise<boolean> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (:Usuario {userId: $userId})-[membership:PERTENECE_A]->(team:Proyecto)
+         WHERE (team.projectId = $teamId OR team.proyectoId = $teamId)
+           AND (
+             coalesce(membership.isLeader, false) = true
+             OR toLower(coalesce(membership.role, membership.rol, '')) IN ['leader', 'lider', 'líder']
+           )
+         RETURN 1 AS found
+         LIMIT 1`,
+        { userId, teamId: teamId.trim() }
+      );
+
+      return result.records.length > 0;
+    } finally {
+      await session.close();
+    }
+  }
+
   public async findCompositionById(teamId: string): Promise<TeamComposition | null> {
     const session = driver.session();
 
@@ -121,11 +162,18 @@ export class TeamDetailRepository {
              status: coalesce(task.status, task.estado)
            }) AS activeTasks
          }
-         WITH team, member, membership, activeTasks, membership IS NOT NULL AS membershipExists
-         FOREACH (_ IN CASE WHEN membershipExists AND size(activeTasks) = 0 THEN [1] ELSE [] END | DELETE membership)
+         WITH team,
+              member,
+              membership,
+              activeTasks,
+              membership IS NOT NULL AS membershipExists,
+              coalesce(membership.isLeader, false) = true
+                OR toLower(coalesce(membership.role, membership.rol, '')) IN ['leader', 'lider', 'líder'] AS memberIsLeader
+         FOREACH (_ IN CASE WHEN membershipExists AND NOT memberIsLeader AND size(activeTasks) = 0 THEN [1] ELSE [] END | DELETE membership)
          RETURN coalesce(team.projectId, team.proyectoId) AS teamId,
                 member.userId AS memberId,
                 membershipExists,
+                memberIsLeader,
                 activeTasks
          LIMIT 1`,
         { teamId: teamId.trim(), memberId, inactiveTaskStatuses: INACTIVE_TASK_STATUSES }
@@ -147,6 +195,7 @@ export class TeamDetailRepository {
         teamId: String(record.get('teamId')),
         memberId: String(record.get('memberId') ?? memberId),
         membershipExists: record.get('membershipExists') === true,
+        memberIsLeader: record.get('memberIsLeader') === true,
         activeTasks
       };
     } finally {
