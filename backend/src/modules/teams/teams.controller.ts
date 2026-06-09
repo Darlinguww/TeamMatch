@@ -7,26 +7,26 @@ import { TeamsService } from './teams.service.js';
 export class TeamsController {
   public constructor(private readonly teamsService: TeamsService) {}
 
-  public getTeamComposition = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+  public getTeamComposition = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const params = res.locals.teamParams as TeamIdParamsDto | undefined;
 
     if (!params) {
       throw new BadRequestError('Team route parameter validation is required');
     }
 
-    const team = await this.teamsService.getTeamComposition(params.teamId);
+    const team = await this.teamsService.getTeamComposition(req.user!.userId, params.teamId);
 
     res.status(200).json({ team });
   });
 
-  public removeMember = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+  public removeMember = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const params = res.locals.removeTeamMemberParams as RemoveTeamMemberParamsDto | undefined;
 
     if (!params) {
       throw new BadRequestError('Team member route parameter validation is required');
     }
 
-    const result = await this.teamsService.removeMember(params.teamId, params.memberId);
+    const result = await this.teamsService.removeMember(req.user!.userId, params.teamId, params.memberId);
 
     res.status(200).json(result);
   });
