@@ -2,8 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { serializePublicProfile } from './serializers/public-profile.serializer.js';
 import { validateUpdateProfileAvailabilityDto } from './dto/update-profile-availability.dto.js';
 import { validateUpdateProfileExperienceDto } from './dto/update-profile-experience.dto.js';
+import { validateUpdateProfileSkillsDto } from './dto/update-profile-skills.dto.js';
 
 describe('Profile validation', () => {
+  it('acepta una lista vacia de habilidades para limpiar el perfil', () => {
+    const validation = validateUpdateProfileSkillsDto({ skills: [] });
+
+    expect(validation.issues).toHaveLength(0);
+    expect(validation.value.skills).toEqual([]);
+  });
+
   it('acepta niveles de dominio validos y los normaliza', () => {
     const validation = validateUpdateProfileExperienceDto({
       experience: [{
