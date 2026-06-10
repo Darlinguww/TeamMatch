@@ -282,9 +282,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const skillNames = data.skills
       .map((s) => s.name.trim())
       .filter((name) => name.length > 0);
-    if (skillNames.length === 0) {
-      return;
-    }
     await profileApi.updateSkills(skillNames);
     await profileApi.updateExperience(
       buildExperiencePayload(data.skills as User['skills'], data.yearsExperience)

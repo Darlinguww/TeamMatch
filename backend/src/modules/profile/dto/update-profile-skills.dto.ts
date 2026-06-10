@@ -51,10 +51,6 @@ export function validateUpdateProfileSkillsDto(payload: unknown): DtoValidationR
     }
   });
 
-  if (value.skills.length === 0) {
-    issues.push({ field: 'skills', message: 'At least one skill is required' });
-  }
-
   if (value.skills.length > MAX_SKILLS) {
     issues.push({ field: 'skills', message: `Skills cannot exceed ${MAX_SKILLS} values` });
   }
