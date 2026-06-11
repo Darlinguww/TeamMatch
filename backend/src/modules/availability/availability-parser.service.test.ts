@@ -74,6 +74,17 @@ describe('Availability parsing', () => {
     });
   });
 
+  it('rechaza texto ambiguo sin dias en vez de inventar disponibilidad laboral', async () => {
+    const service = new AvailabilityParserService(
+      new FailingAiParser(),
+      new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser())
+    );
+
+    await expect(service.parse('disponible en general')).rejects.toThrow(
+      'Availability text must include a valid weekday'
+    );
+  });
+
   it('interpreta media jornada en tardes y fines de semana flexibles', async () => {
     const parser = new NaturalLanguageAvailabilityParser(new ManualAvailabilityParser());
     const text =

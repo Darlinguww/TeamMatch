@@ -191,8 +191,10 @@ export function parseAvailabilityHeuristic(text: string): ApiAvailabilityDay[] {
 
   if (byDay.size === 0) {
     const days = detectDays(trimmed);
+    if (days.length === 0) return [];
+
     const bands = detectTimeBands(trimmed);
-    for (const day of days.length > 0 ? days : WEEKDAYS_WORK) {
+    for (const day of days) {
       mergeSlots(byDay, day, bands);
     }
   }
