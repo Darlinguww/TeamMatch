@@ -11,7 +11,7 @@ import { type Skill } from "../lib/mockData";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { useAuth } from "../lib/authContext";
-import { profileApi } from "../lib/profileApi";
+import { profileApi, type ApiAvailabilityDay } from "../lib/profileApi";
 import { hasBackendSession, parseAvailabilityFromInput, suggestSkillsFromInput } from "../lib/aiFeatures";
 import { SKILL_SUGGESTIONS } from "../lib/skillCatalog";
 import { skillCategoryColors } from "../lib/badgeStyles";
@@ -31,6 +31,55 @@ const skillLevels = {
   expert:       { bars: 4 },
 };
 
+const WEEKDAY_ORDER: ApiAvailabilityDay['day'][] = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+];
+
+function formatAvailabilityDay(day: ApiAvailabilityDay): string {
+  return `${day.day} ${day.timeSlots.map((slot) => `${slot.start}-${slot.end}`).join(', ')}`;
+}
+
+function parsePreferredTimesAvailability(preferredTimes: string[]): ApiAvailabilityDay[] {
+  const byDay = new Map<string, ApiAvailabilityDay['timeSlots']>();
+
+  for (const preferredTime of preferredTimes) {
+    const match = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(.+)$/i.exec(
+      preferredTime.trim()
+    );
+    if (!match) continue;
+
+    const slots = match[2].split(',').map((slot) => slot.trim()).filter(Boolean);
+    for (const slot of slots) {
+      const slotMatch = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/.exec(slot);
+      if (!slotMatch) continue;
+
+      const start = `${slotMatch[1]}:${slotMatch[2]}`;
+      const end = `${slotMatch[3]}:${slotMatch[4]}`;
+      if (start >= end) continue;
+
+      const day = match[1].toLowerCase();
+      const existingSlots = byDay.get(day) ?? [];
+      if (!existingSlots.some((item) => item.start === start && item.end === end)) {
+        existingSlots.push({ start, end });
+      }
+      byDay.set(day, existingSlots);
+    }
+  }
+
+  return WEEKDAY_ORDER
+    .filter((day) => byDay.has(day))
+    .map((day) => ({
+      day,
+      timeSlots: (byDay.get(day) ?? []).sort((left, right) => left.start.localeCompare(right.start)),
+    }));
+}
+
 export function Profile() {
   const { user: authUser, updateProfile } = useAuth();
 
@@ -45,10 +94,6 @@ export function Profile() {
   } : null;
 
   const [local, setLocal] = useState(makeLocal);
-
-  // Re-sync when authUser changes (after save or onboarding)
-  useEffect(() => { setLocal(makeLocal()); }, [authUser]);
-
   const [isEditing,       setIsEditing]       = useState(false);
   const [saving,          setSaving]          = useState(false);
   const [isAddSkillOpen,  setIsAddSkillOpen]  = useState(false);
@@ -57,12 +102,21 @@ export function Profile() {
   const [newSkill,        setNewSkill]        = useState<Partial<Skill>>({ name: "", category: "technical", level: "beginner" });
   const [availabilityTimeInput, setAvailabilityTimeInput] = useState("");
   const [availabilityParseInput, setAvailabilityParseInput] = useState("");
-  const [parsedAvailability, setParsedAvailability] = useState<Array<{ day: string; timeSlots: Array<{ start: string; end: string }> }> | null>(null);
+  const [parsedAvailability, setParsedAvailability] = useState<ApiAvailabilityDay[] | null>(null);
   const [isParsingAvailability, setIsParsingAvailability] = useState(false);
   const [availabilityParseError, setAvailabilityParseError] = useState<string | null>(null);
+  const [availabilitySyncDirty, setAvailabilitySyncDirty] = useState(false);
   const [aiSkillError, setAiSkillError] = useState<string | null>(null);
   const [isAddInterestOpen, setIsAddInterestOpen] = useState(false);
   const [newInterest, setNewInterest] = useState("");
+
+  // Re-sync when authUser changes (after save or onboarding)
+  useEffect(() => {
+    setLocal(makeLocal());
+    setParsedAvailability(null);
+    setAvailabilityParseError(null);
+    setAvailabilitySyncDirty(false);
+  }, [authUser]);
 
   const normalizeSkillName = (name: string) => name.trim().toLowerCase();
 
@@ -111,9 +165,8 @@ export function Profile() {
       setParsedAvailability(result.availability);
 
       if (result.availability.length > 0) {
-        const formatted = result.availability.map((day) =>
-          `${day.day} ${day.timeSlots.map((slot) => `${slot.start}-${slot.end}`).join(', ')}`
-        );
+        const formatted = result.availability.map(formatAvailabilityDay);
+        setAvailabilitySyncDirty(true);
         setLocal((p) => p ? {
           ...p,
           availability: {
@@ -135,6 +188,13 @@ export function Profile() {
   };
 
   const handleRemovePreferredTime = (time: string) => {
+    if (parsePreferredTimesAvailability([time]).length > 0) {
+      setAvailabilitySyncDirty(true);
+      setParsedAvailability((current) => {
+        const next = current?.filter((entry) => formatAvailabilityDay(entry) !== time) ?? null;
+        return next && next.length > 0 ? next : null;
+      });
+    }
     setLocal((p) => {
       if (!p) return p;
       return {
@@ -155,8 +215,10 @@ export function Profile() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (hasBackendSession() && parsedAvailability && parsedAvailability.length > 0) {
-        await profileApi.updateAvailability(parsedAvailability);
+      if (hasBackendSession() && availabilitySyncDirty) {
+        await profileApi.updateAvailability(
+          parsePreferredTimesAvailability(local.availability.preferredTimes)
+        );
       }
       const skillsToSave = local.skills
         .map((s) => ({ ...s, name: s.name.trim() }))
@@ -173,6 +235,8 @@ export function Profile() {
         preferredTimes: local.availability.preferredTimes,
         workTypes:      [],
       });
+      setParsedAvailability(null);
+      setAvailabilitySyncDirty(false);
       setIsEditing(false);
       toast.success('Perfil guardado');
     } catch (error) {
@@ -314,7 +378,18 @@ export function Profile() {
         </div>
         {isEditing ? (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { setLocal(makeLocal()); setIsEditing(false); }}>Cancelar</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLocal(makeLocal());
+                setParsedAvailability(null);
+                setAvailabilityParseError(null);
+                setAvailabilitySyncDirty(false);
+                setIsEditing(false);
+              }}
+            >
+              Cancelar
+            </Button>
             <Button onClick={handleSave} disabled={saving} className="gap-2">
               {saving
                 ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />Guardando...</>
