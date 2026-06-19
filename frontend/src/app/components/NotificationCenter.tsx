@@ -111,7 +111,6 @@ export function NotificationCenter() {
       setLoading(true);
       const response = await notificationsApi.list();
       setNotifications(response.notifications || []);
-      window.dispatchEvent(new CustomEvent('teammatch:notifications-changed'));
     } catch (err) {
       console.error(err);
       setNotifications([]);
