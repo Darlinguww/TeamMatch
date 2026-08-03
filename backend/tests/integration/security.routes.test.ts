@@ -89,4 +89,27 @@ describe.skipIf(!hasNeo4jIntegration())('IDOR workflow tareas — Neo4j real', (
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN');
   });
+
+  it('un usuario removido del proyecto no puede avanzar una tarea aunque siga asignado', async () => {
+    const session = driver.session();
+    try {
+      await session.run(
+        `MATCH (:Usuario {userId: $memberId})-[membership:PERTENECE_A]->(:Proyecto {projectId: $projectId})
+         DELETE membership`,
+        { memberId: graph.memberId, projectId: graph.projectId }
+      );
+    } finally {
+      await session.close();
+    }
+
+    const memberToken = signAccessToken({ sub: graph.memberId, email: `${graph.memberId}@test.local` });
+
+    const response = await request(app)
+      .patch(`/tasks/${graph.taskId}/status`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ status: 'en revision' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
 });

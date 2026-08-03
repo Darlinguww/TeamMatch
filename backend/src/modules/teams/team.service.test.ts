@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BadRequestError, ForbiddenError } from '../../shared/errors/HttpErrors.js';
-import { TeamMemberInput, TeamRepository, TeamService } from './team.service.js';
+import { BadRequestError, ConflictError, ForbiddenError } from '../../shared/errors/HttpErrors.js';
+import { TeamMemberActiveTask, TeamMemberInput, TeamRepository, TeamService } from './team.service.js';
 
 class FakeTeamRepository implements TeamRepository {
   public leaders = new Map<string, string>();
   public users = new Set<string>();
   public memberships = new Map<string, Map<string, string>>();
+  public activeTasks = new Map<string, TeamMemberActiveTask[]>();
 
   public async isProjectLeader(userId: string, projectId: string): Promise<boolean> {
     return this.leaders.get(projectId) === userId;
@@ -35,6 +36,12 @@ class FakeTeamRepository implements TeamRepository {
     return userIds
       .filter((userId) => memberships.has(userId))
       .map((userId) => ({ userId, rol: memberships.get(userId) ?? '' }));
+  }
+
+  public async findActiveAssignedTasks(projectId: string, userIds: string[]): Promise<TeamMemberActiveTask[]> {
+    const activeTasks = this.activeTasks.get(projectId) ?? [];
+    const requested = new Set(userIds);
+    return activeTasks.filter((task) => requested.has(task.userId));
   }
 
   public async addMembers(projectId: string, members: TeamMemberInput[]): Promise<string[]> {
@@ -87,6 +94,16 @@ describe('TeamService integrantes', () => {
     await expect(service.updateMembers('leader-1', 'project-1', {
       remove: ['leader-1']
     })).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('bloquea remover integrantes con tareas activas', async () => {
+    repository.activeTasks.set('project-1', [
+      { userId: 'member-1', taskId: 'task-1', title: 'Entrega sprint', status: 'en progreso' }
+    ]);
+
+    await expect(service.updateMembers('leader-1', 'project-1', {
+      remove: ['member-1']
+    })).rejects.toBeInstanceOf(ConflictError);
   });
 
   it('valida usuarios inexistentes y payloads vacios', async () => {

@@ -1,4 +1,4 @@
-import { BadRequestError, ForbiddenError } from '../../shared/errors/HttpErrors.js';
+import { BadRequestError, ConflictError, ForbiddenError } from '../../shared/errors/HttpErrors.js';
 
 export interface TeamMemberInput {
   userId: string;
@@ -16,6 +16,13 @@ export interface TeamMembersResult {
   removed: string[];
 }
 
+export interface TeamMemberActiveTask {
+  userId: string;
+  taskId: string;
+  title: string;
+  status: string;
+}
+
 export interface TeamRepository {
   isProjectLeader(userId: string, projectId: string): Promise<boolean>;
   findMissingUserIds(userIds: string[]): Promise<string[]>;
@@ -24,6 +31,7 @@ export interface TeamRepository {
     projectId: string
   ): Promise<Array<{ roleName: string; headcount: number; filled: number; available: number }>>;
   findProjectMemberships(projectId: string, userIds: string[]): Promise<Array<{ userId: string; rol: string }>>;
+  findActiveAssignedTasks(projectId: string, userIds: string[]): Promise<TeamMemberActiveTask[]>;
   addMembers(projectId: string, members: TeamMemberInput[]): Promise<string[]>;
   removeMembers(projectId: string, userIds: string[]): Promise<string[]>;
 }
@@ -72,6 +80,15 @@ export class TeamService {
 
       if (leaderRemovals.length > 0) {
         throw new BadRequestError(`No se puede remover al lider del proyecto: ${leaderRemovals.join(', ')}`);
+      }
+
+      const activeTasks = await this.repository.findActiveAssignedTasks(projectId, patch.remove);
+      if (activeTasks.length > 0) {
+        throw new ConflictError('Member has active assigned tasks', {
+          projectId,
+          activeTaskCount: activeTasks.length,
+          activeTasks
+        });
       }
     }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ConflictError, NotFoundError } from '../../shared/errors/HttpErrors.js';
+import { ConflictError, ForbiddenError, NotFoundError } from '../../shared/errors/HttpErrors.js';
 import { TeamDetailRepository } from './repositories/team-detail.repository.js';
 import { TeamsService } from './teams.service.js';
 
@@ -25,6 +25,7 @@ describe('HU-1 — composición de equipo y remoción segura', () => {
         ],
         roles: [{ roleId: 'r1', name: 'Backend', skills: ['Node'], headcount: 2 }]
       }),
+      isProjectLeader: vi.fn().mockResolvedValue(true),
       removeMemberIfNoActiveTasks: vi.fn()
     } as unknown as TeamDetailRepository;
 
@@ -39,6 +40,7 @@ describe('HU-1 — composición de equipo y remoción segura', () => {
   it('bloquea la remoción y expone las tareas activas en el error (alerta)', async () => {
     const mockRepo = {
       findCompositionById: vi.fn(),
+      isProjectLeader: vi.fn().mockResolvedValue(true),
       removeMemberIfNoActiveTasks: vi.fn().mockResolvedValue({
         teamId,
         memberId,
@@ -51,7 +53,7 @@ describe('HU-1 — composición de equipo y remoción segura', () => {
 
     const service = new TeamsService(mockRepo);
 
-    const rejection = service.removeMember(teamId, memberId);
+    const rejection = service.removeMember('leader-1', teamId, memberId);
     await expect(rejection).rejects.toBeInstanceOf(ConflictError);
     await expect(rejection).rejects.toMatchObject({
       details: {
@@ -66,6 +68,7 @@ describe('HU-1 — composición de equipo y remoción segura', () => {
   it('permite remover cuando no hay tareas activas', async () => {
     const mockRepo = {
       findCompositionById: vi.fn(),
+      isProjectLeader: vi.fn().mockResolvedValue(true),
       removeMemberIfNoActiveTasks: vi.fn().mockResolvedValue({
         teamId,
         memberId,
@@ -75,14 +78,28 @@ describe('HU-1 — composición de equipo y remoción segura', () => {
     } as unknown as TeamDetailRepository;
 
     const service = new TeamsService(mockRepo);
-    const result = await service.removeMember(teamId, memberId);
+    const result = await service.removeMember('leader-1', teamId, memberId);
 
     expect(result).toEqual({ teamId, memberId, removed: true });
+  });
+
+  it('rechaza remociones hechas por usuarios que no son lideres', async () => {
+    const mockRepo = {
+      findCompositionById: vi.fn(),
+      isProjectLeader: vi.fn().mockResolvedValue(false),
+      removeMemberIfNoActiveTasks: vi.fn()
+    } as unknown as TeamDetailRepository;
+
+    const service = new TeamsService(mockRepo);
+
+    await expect(service.removeMember('member-2', teamId, memberId)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(mockRepo.removeMemberIfNoActiveTasks).not.toHaveBeenCalled();
   });
 
   it('devuelve 404 si el equipo no existe', async () => {
     const mockRepo = {
       findCompositionById: vi.fn().mockResolvedValue(null),
+      isProjectLeader: vi.fn(),
       removeMemberIfNoActiveTasks: vi.fn()
     } as unknown as TeamDetailRepository;
 

@@ -25,6 +25,7 @@ import { TeamProposals, type TeamProposal } from './TeamProposals';
 import { KanbanBoard } from './KanbanBoard';
 import { ApiError, getStoredToken } from '../lib/apiClient';
 import {
+  isApiModeEnabled,
   isApiProjectRouteId,
   mapApiProjectToUi,
   mapApiTaskToUi,
