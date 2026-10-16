@@ -101,7 +101,8 @@ export class TaskWorkflowRepository {
               previousStatus,
               previousStatusKey,
               actorIsLeader OR (
-                actorIsAssigned
+                actorIsMember
+                AND actorIsAssigned
                 AND (
                   (
                     previousStatusKey IN $pendingStatusKeys
