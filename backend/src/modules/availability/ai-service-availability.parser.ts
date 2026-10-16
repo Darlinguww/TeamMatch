@@ -32,6 +32,10 @@ export class AiServiceAvailabilityParser implements AvailabilityParser {
       throw new Error('AI service returned invalid availability');
     }
 
+    if (validation.value.availability.length === 0) {
+      throw new Error('AI service did not detect availability');
+    }
+
     return validation.value.availability;
   }
 }
