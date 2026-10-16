@@ -82,6 +82,7 @@ export function Profile() {
   const handleAddPreferredTime = () => {
     const value = availabilityTimeInput.trim();
     if (!value) return;
+    setParsedAvailability(null);
     setLocal((p) => {
       if (!p) return p;
       if (p.availability.preferredTimes.includes(value)) return p;
@@ -135,6 +136,7 @@ export function Profile() {
   };
 
   const handleRemovePreferredTime = (time: string) => {
+    setParsedAvailability(null);
     setLocal((p) => {
       if (!p) return p;
       return {
@@ -151,13 +153,21 @@ export function Profile() {
 
   const isProfileEmpty = !local.bio && local.skills.length === 0;
 
+  const handleCancel = () => {
+    setLocal(makeLocal());
+    setParsedAvailability(null);
+    setAvailabilityParseError(null);
+    setAvailabilityParseInput("");
+    setIsEditing(false);
+  };
+
   // ── save ──
   const handleSave = async () => {
     setSaving(true);
+    const availabilityToSave = hasBackendSession() && parsedAvailability && parsedAvailability.length > 0
+      ? parsedAvailability
+      : null;
     try {
-      if (hasBackendSession() && parsedAvailability && parsedAvailability.length > 0) {
-        await profileApi.updateAvailability(parsedAvailability);
-      }
       const skillsToSave = local.skills
         .map((s) => ({ ...s, name: s.name.trim() }))
         .filter((s) => s.name.length > 0);
@@ -173,6 +183,11 @@ export function Profile() {
         preferredTimes: local.availability.preferredTimes,
         workTypes:      [],
       });
+      if (availabilityToSave) {
+        await profileApi.updateAvailability(availabilityToSave);
+      }
+      setParsedAvailability(null);
+      setAvailabilityParseInput("");
       setIsEditing(false);
       toast.success('Perfil guardado');
     } catch (error) {
@@ -314,7 +329,7 @@ export function Profile() {
         </div>
         {isEditing ? (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { setLocal(makeLocal()); setIsEditing(false); }}>Cancelar</Button>
+            <Button variant="outline" onClick={handleCancel}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving} className="gap-2">
               {saving
                 ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />Guardando...</>
@@ -693,7 +708,10 @@ export function Profile() {
                     </div>
                     <Textarea
                       value={availabilityParseInput}
-                      onChange={(e) => setAvailabilityParseInput(e.target.value)}
+                      onChange={(e) => {
+                        setAvailabilityParseInput(e.target.value);
+                        setParsedAvailability(null);
+                      }}
                       placeholder="Ej: Lunes de 9 a 11 y miércoles de 18 a 20"
                       rows={3}
                     />
