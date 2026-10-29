@@ -75,18 +75,15 @@ export class ProfileRepository {
         `MATCH (u:Usuario {userId: $userId})
          OPTIONAL MATCH (u)-[oldSkill:TIENE_HABILIDAD]->(:Habilidad)
          DELETE oldSkill
-         WITH u
-         CALL {
-           WITH u
-           UNWIND $skills AS item
+         WITH DISTINCT u
+         FOREACH (item IN $skills |
            MERGE (skill:Habilidad {normalizedName: item.normalizedSkillName})
            ON CREATE SET skill.name = item.skillName,
                          skill.createdAt = $updatedAt
            SET skill.updatedAt = $updatedAt
            MERGE (u)-[skillRel:TIENE_HABILIDAD]->(skill)
            SET skillRel.updatedAt = $updatedAt
-           RETURN count(skillRel) AS updatedRelationships
-         }
+         )
          RETURN u.userId AS userId`,
         { userId, skills: normalizedSkills, updatedAt }
       );
@@ -139,10 +136,8 @@ export class ProfileRepository {
         `MATCH (u:Usuario {userId: $userId})
          OPTIONAL MATCH (u)-[oldExperience:TIENE_EXPERIENCIA_EN]->(:Habilidad)
          DELETE oldExperience
-         WITH u
-         CALL {
-           WITH u
-           UNWIND $experience AS item
+         WITH DISTINCT u
+         FOREACH (item IN $experience |
            MERGE (skill:Habilidad {normalizedName: item.normalizedSkillName})
            ON CREATE SET skill.name = item.skillName,
                          skill.createdAt = $updatedAt
@@ -151,8 +146,7 @@ export class ProfileRepository {
            SET experienceRel.yearsOfExperience = item.yearsOfExperience,
                experienceRel.level = item.level,
                experienceRel.updatedAt = $updatedAt
-           RETURN count(experienceRel) AS updatedRelationships
-         }
+         )
          RETURN u.userId AS userId`,
         {
           userId,
@@ -182,20 +176,18 @@ export class ProfileRepository {
         `MATCH (u:Usuario {userId: $userId})
          OPTIONAL MATCH (u)-[:DISPONIBLE_EN]->(oldAvailability:Disponibilidad)
          DETACH DELETE oldAvailability
-         WITH u
-         CALL {
-           WITH u
-           UNWIND $availability AS dayAvailability
-           UNWIND dayAvailability.timeSlots AS slot
-           CREATE (availability:Disponibilidad {
-             day: dayAvailability.day,
-             start: slot.start,
-             end: slot.end,
-             updatedAt: $updatedAt
-           })
-           CREATE (u)-[:DISPONIBLE_EN]->(availability)
-           RETURN count(availability) AS createdAvailability
-         }
+         WITH DISTINCT u
+         FOREACH (dayAvailability IN $availability |
+           FOREACH (slot IN dayAvailability.timeSlots |
+             CREATE (availability:Disponibilidad {
+               day: dayAvailability.day,
+               start: slot.start,
+               end: slot.end,
+               updatedAt: $updatedAt
+             })
+             CREATE (u)-[:DISPONIBLE_EN]->(availability)
+           )
+         )
          RETURN u.userId AS userId`,
         { userId, availability, updatedAt }
       );
