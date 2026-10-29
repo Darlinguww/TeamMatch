@@ -330,9 +330,9 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
         await session.run(
           `MATCH (project:Proyecto)
            WHERE project.projectId = $projectId OR project.proyectoId = $projectId
-           OPTIONAL MATCH (project)-[oldRoleRel:TIENE_ROL]->(oldRole:Rol)
+           OPTIONAL MATCH (project)-[:TIENE_ROL]->(oldRole:Rol)
            DETACH DELETE oldRole
-           WITH project
+           WITH DISTINCT project
            UNWIND $roles AS roleInput
            CREATE (role:Rol {
              roleId: randomUUID(),
@@ -341,14 +341,18 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
            })
            MERGE (project)-[:TIENE_ROL]->(role)
            WITH role, roleInput
-           UNWIND roleInput.skills AS skillName
-           MERGE (skill:Habilidad {normalizedName: toLower(trim(skillName))})
-           ON CREATE SET skill.name = trim(skillName),
-                         skill.createdAt = datetime(),
-                         skill.es_tecnica = true
-           ON MATCH SET skill.name = coalesce(skill.name, trim(skillName)),
-                        skill.updatedAt = datetime()
-           MERGE (role)-[:REQUIERE]->(skill)`,
+           UNWIND CASE WHEN size(coalesce(roleInput.skills, [])) = 0 THEN [null] ELSE roleInput.skills END AS skillName
+           WITH role, skillName
+           WHERE skillName IS NULL OR trim(skillName) <> ''
+           FOREACH (_ IN CASE WHEN skillName IS NULL THEN [] ELSE [1] END |
+             MERGE (skill:Habilidad {normalizedName: toLower(trim(skillName))})
+             ON CREATE SET skill.name = trim(skillName),
+                           skill.createdAt = datetime(),
+                           skill.es_tecnica = true
+             ON MATCH SET skill.name = coalesce(skill.name, trim(skillName)),
+                          skill.updatedAt = datetime()
+             MERGE (role)-[:REQUIERE]->(skill)
+           )`,
           {
             projectId,
             roles: input.roles.map((r) => ({
@@ -691,9 +695,8 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
     try {
       await session.run(
         `MATCH (from:Usuario {userId: $fromUserId}), (to:Usuario {userId: $toUserId}), (p:Proyecto {projectId: $projectId})
-         MERGE (from)-[f:EVALUO]->(to)
-         ON CREATE SET f.proyectoId = $projectId,
-                       f.projectId = $projectId,
+         MERGE (from)-[f:EVALUO {proyectoId: $projectId}]->(to)
+         ON CREATE SET f.projectId = $projectId,
                        f.evaluadorId = $fromUserId,
                        f.evaluadoId = $toUserId
          SET f.puntaje = $score,
