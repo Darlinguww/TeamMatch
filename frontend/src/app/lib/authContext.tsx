@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { User, mockUsers } from './mockData';
 import { ApiError, authApi, getStoredToken, setStoredToken } from './apiClient';
 import { buildExperiencePayload, profileApi } from './profileApi';
-import { mapApiCategory } from './skillCatalog';
+import { displayedExperienceYears, mapApiProfileSkills } from './profileSkills';
 
 const USE_API_AUTH = import.meta.env.VITE_USE_API_AUTH === 'true';
 
@@ -93,19 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
           try {
             const { profile } = await profileApi.getProfile(me.userId);
-            const totalYears = (profile.experience ?? []).reduce(
-              (sum, e) => sum + (e.yearsOfExperience ?? 0),
-              0
-            );
+            const skills = mapApiProfileSkills(profile.skills ?? [], profile.experience ?? []);
             restored = {
               ...restored,
-              skills: (profile.skills ?? []).map((name, i) => ({
-                id: `sk_${i}`,
-                name,
-                category: mapApiCategory(),
-                level: 'intermediate' as const,
-              })),
-              experience: Math.round(totalYears / Math.max(profile.skills?.length ?? 1, 1)),
+              skills,
+              experience: displayedExperienceYears(skills.length, profile.experience ?? []),
             };
           } catch {
             /* perfil vacío en Neo4j */
@@ -204,12 +196,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         try {
           const { profile } = await profileApi.getProfile(me.userId);
-          restored.skills = (profile.skills ?? []).map((name, i) => ({
-            id: `sk_${i}`,
-            name,
-            category: mapApiCategory(),
-            level: 'intermediate',
-          }));
+          restored.skills = mapApiProfileSkills(profile.skills ?? [], profile.experience ?? []);
+          restored.experience = displayedExperienceYears(restored.skills.length, profile.experience ?? []);
         } catch {
           /* sin perfil aún */
         }

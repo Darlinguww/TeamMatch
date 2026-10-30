@@ -45,6 +45,21 @@ export function levelToYears(level?: string): number {
   }
 }
 
+const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'expert'] as const;
+
+export function isSkillLevel(value: string | null | undefined): value is (typeof SKILL_LEVELS)[number] {
+  return Boolean(value && (SKILL_LEVELS as readonly string[]).includes(value));
+}
+
+/** Maps stored years back to the level bucket the profile editor persists. */
+export function levelFromYears(years: number): (typeof SKILL_LEVELS)[number] | null {
+  if (!Number.isFinite(years) || years <= 0) return null;
+  if (years >= 8) return 'expert';
+  if (years >= 5) return 'advanced';
+  if (years >= 2) return 'intermediate';
+  return 'beginner';
+}
+
 export function mapApiCategory(category?: string): 'technical' | 'soft' | 'language' | 'domain' {
   const c = (category ?? '').toLowerCase();
   if (c.includes('bland') || c === 'soft') return 'soft';
