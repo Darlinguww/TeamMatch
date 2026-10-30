@@ -1,5 +1,5 @@
 import { apiRequest, ApiError } from './apiClient';
-import { mapApiCategory, type SuggestedSkillPayload } from './skillCatalog';
+import { levelToYears, mapApiCategory, type SuggestedSkillPayload } from './skillCatalog';
 import type { Skill } from './mockData';
 
 export interface ApiAvailabilityDay {
@@ -89,16 +89,10 @@ export function suggestedToUiSkills(items: SuggestedSkillPayload[]): Skill[] {
 }
 
 export function buildExperiencePayload(skills: Skill[], yearsExperience: number) {
-  const levelYears: Record<Skill['level'], number> = {
-    beginner: 1,
-    intermediate: 2,
-    advanced: 5,
-    expert: 8,
-  };
-
   return skills.map((skill) => ({
     skillName: skill.name,
-    yearsOfExperience: levelYears[skill.level] ?? Math.max(1, Math.floor(yearsExperience / Math.max(skills.length, 1))),
+    yearsOfExperience:
+      levelToYears(skill.level) || Math.max(1, Math.floor(yearsExperience / Math.max(skills.length, 1))),
     level: skill.level,
   }));
 }
