@@ -17,9 +17,16 @@ export class MatchmakingService {
   public constructor(private readonly matchmakingRepository: MatchmakingRepository) {}
 
   public async getProjectMatches(
+    userId: string,
     projectId: string,
     input: { limit: number; offset: number; includeExistingMembers: boolean }
   ): Promise<ProjectMatchmakingPage> {
+    const isMember = await this.matchmakingRepository.isUserProjectMember(userId, projectId);
+
+    if (!isMember) {
+      throw new NotFoundError('Project not found');
+    }
+
     const result = await this.scoreProjectCandidates(projectId, {
       includeProjectMembers: input.includeExistingMembers
     });

@@ -171,6 +171,24 @@ function serializeCandidate(value: unknown): MatchmakingCandidate | null {
 }
 
 export class MatchmakingRepository {
+  public async isUserProjectMember(userId: string, projectId: string): Promise<boolean> {
+    const session = driver.session();
+
+    try {
+      const result = await session.run(
+        `MATCH (:Usuario {userId: $userId})-[:PERTENECE_A]->(project:Proyecto)
+         WHERE project.projectId = $projectId OR project.proyectoId = $projectId
+         RETURN 1 AS found
+         LIMIT 1`,
+        { userId: userId.trim(), projectId: projectId.trim() }
+      );
+
+      return result.records.length > 0;
+    } finally {
+      await session.close();
+    }
+  }
+
   public async findProjectContext(projectId: string): Promise<MatchmakingProjectContext | null> {
     const session = driver.session();
 

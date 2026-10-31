@@ -121,6 +121,16 @@ describe('API HTTP con Supertest', () => {
       .expect(404);
   });
 
+  it('protege el listado de candidatos de matchmaking detras de autenticacion', async () => {
+    const response = await request(app)
+      .get('/projects/p1/match')
+      .expect(401);
+
+    expect(response.body.error).toMatchObject({
+      code: 'UNAUTHORIZED'
+    });
+  });
+
   it('protege el scoring de Fase 2 detras de autenticacion', async () => {
     const response = await request(app)
       .get('/projects/project-1/match/phase2')

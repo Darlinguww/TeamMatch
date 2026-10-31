@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { BadRequestError } from '../../shared/errors/HttpErrors.js';
+import { requireAuth } from '../auth/auth.routes.js';
 import { validateProjectMatchRequestDto } from './dto/project-match.dto.js';
 import { MatchmakingController } from './matchmaking.controller.js';
 import { MatchmakingRepository } from './matchmaking.repository.js';
@@ -25,6 +26,6 @@ function validateProjectMatchRequest(req: Request, res: Response, next: NextFunc
   next();
 }
 
-router.get('/:id/match', validateProjectMatchRequest, matchmakingController.getProjectMatches);
+router.get('/:id/match', requireAuth, validateProjectMatchRequest, matchmakingController.getProjectMatches);
 
 export default router;
