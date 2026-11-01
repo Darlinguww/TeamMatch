@@ -398,11 +398,13 @@ export class ProfileRepository {
          }
          WITH u,
               experience,
+              confirmedSkills,
               availabilitySlots,
               matchingExperience,
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              redundancyPenalty,
               reputationScore,
               [domainWeight IN $technologyDomainWeights |
                {
@@ -415,11 +417,13 @@ export class ProfileRepository {
                }] AS allDomainWeights
          WITH u,
               experience,
+              confirmedSkills,
               availabilitySlots,
               matchingExperience,
               matchingSkills,
               totalMatchingYears,
               availabilityMatched,
+              redundancyPenalty,
               reputationScore,
               [domainWeight IN allDomainWeights WHERE domainWeight.weight > 0.0] AS domainWeights
          WITH u,
@@ -437,6 +441,7 @@ export class ProfileRepository {
                  AND category IN [item IN matchingExperience | item.category]] AS matchingCategories
          WITH u,
               experience,
+              confirmedSkills,
               availabilitySlots,
               matchingSkills,
               totalMatchingYears,
@@ -448,6 +453,7 @@ export class ProfileRepository {
               reduce(domainWeightBonus = 0.0, domainWeight IN domainWeights | domainWeightBonus + domainWeight.weight) AS domainWeightBonus
          WITH u,
               experience,
+              confirmedSkills,
               availabilitySlots,
               matchingSkills,
               totalMatchingYears,
@@ -497,6 +503,7 @@ export class ProfileRepository {
               END AS baseScore
          WITH u,
               experience,
+              confirmedSkills,
               availability,
               matchingSkills,
               totalMatchingYears,
@@ -511,6 +518,7 @@ export class ProfileRepository {
               baseScore
          WITH u,
               experience,
+              confirmedSkills,
               availability,
               matchingSkills,
               totalMatchingYears,
