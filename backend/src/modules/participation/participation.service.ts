@@ -114,7 +114,11 @@ export class ParticipationService {
 
     if (decision === 'approved') {
       if (pending.kind === 'JOIN_PROJECT') {
-        await this.repository.addMemberToProject(pending.projectId, pending.applicantUserId, 'miembro');
+        // A role application may already have created the membership. Do not
+        // replace that role with the generic member label.
+        await this.repository.addMemberToProject(pending.projectId, pending.applicantUserId, 'miembro', {
+          onlyIfAbsent: true
+        });
       } else {
         const roleName = pending.roleName ?? 'miembro';
         const vacancy = await this.repository.getRoleVacancy(pending.projectId, roleName);

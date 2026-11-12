@@ -27,6 +27,30 @@ export interface ResolveParticipationInput {
   applicantNotificationMessage: string;
 }
 
+/**
+ * Role approvals assign `rol` even when a membership already exists.
+ * Join approvals must only create a missing membership: a later generic
+ * "miembro" write would erase the role the leader already approved.
+ */
+export function addMemberToProjectQuery(onlyIfAbsent: boolean): string {
+  const assignExistingRole = onlyIfAbsent
+    ? ''
+    : `
+         SET membership.rol = $rol,
+             membership.role = $rol,
+             membership.isLeader = false,
+             membership.createdAt = coalesce(membership.createdAt, $joinedAt)`;
+
+  return `MATCH (project:Proyecto)
+         WHERE project.projectId = $projectId OR project.proyectoId = $projectId
+         MATCH (user:Usuario {userId: $userId})
+         MERGE (user)-[membership:PERTENECE_A]->(project)
+         ON CREATE SET membership.rol = $rol,
+                       membership.role = $rol,
+                       membership.isLeader = false,
+                       membership.createdAt = $joinedAt${assignExistingRole}`;
+}
+
 export class ParticipationRepository {
   public async findOpenProjectId(projectId: string): Promise<string | null> {
     const session = driver.session();
@@ -286,20 +310,14 @@ export class ParticipationRepository {
   public async addMemberToProject(
     projectId: string,
     userId: string,
-    rol: string
+    rol: string,
+    options?: { onlyIfAbsent?: boolean }
   ): Promise<void> {
     const session = driver.session();
     const joinedAt = new Date().toISOString();
     try {
       await session.run(
-        `MATCH (project:Proyecto)
-         WHERE project.projectId = $projectId OR project.proyectoId = $projectId
-         MATCH (user:Usuario {userId: $userId})
-         MERGE (user)-[membership:PERTENECE_A]->(project)
-         SET membership.rol = $rol,
-             membership.role = $rol,
-             membership.isLeader = false,
-             membership.createdAt = coalesce(membership.createdAt, $joinedAt)`,
+        addMemberToProjectQuery(options?.onlyIfAbsent === true),
         { projectId, userId, rol, joinedAt }
       );
     } finally {
