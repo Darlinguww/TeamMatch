@@ -261,5 +261,47 @@ describe.skipIf(!hasNeo4jIntegration())('Historias de usuario — equipos y Kanb
       expect(result.task.status).toBe('en progreso');
       expect(result.notification?.type).toBe('TASK_RETURNED');
     });
+
+    it('el líder aprueba una tarea asignada a sí mismo y escribe un solo evento', async () => {
+      const session = driver.session();
+      let graph: Awaited<ReturnType<typeof seedProjectTaskGraph>>;
+      try {
+        graph = await seedProjectTaskGraph(session, `${TEST_PREFIX}-self`);
+        await session.run(
+          `MATCH (project:Proyecto {projectId: $projectId})
+           MATCH (task:Tarea {taskId: $taskId})
+           MATCH (leader:Usuario {userId: $leaderId})
+           MATCH (:Usuario)-[old:ASIGNADO_A]->(task)
+           DELETE old
+           MERGE (project)-[:CONTIENE]->(task)
+           MERGE (project)-[:TIENE_TAREA]->(task)
+           MERGE (leader)-[:ASIGNADO_A]->(task)
+           SET task.status = 'en revision', task.estado = 'en revision'`,
+          { projectId: graph.projectId, taskId: graph.taskId, leaderId: graph.leaderId }
+        );
+      } finally {
+        await session.close();
+      }
+
+      const result = await tasksWorkflow.reviewTask(graph.taskId, graph.leaderId, {
+        decision: 'approved',
+        comment: null
+      });
+
+      expect(result.task.status).toBe('completada');
+      expect(result.notification).toBeNull();
+
+      const check = driver.session();
+      try {
+        const events = await check.run(
+          `MATCH (:Tarea {taskId: $taskId})-[:TIENE_EVENTO]->(event:EventoTarea)
+           RETURN count(event) AS events`,
+          { taskId: graph.taskId }
+        );
+        expect(events.records[0].get('events')).toBe(1);
+      } finally {
+        await check.close();
+      }
+    });
   });
 });

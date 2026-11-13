@@ -50,6 +50,8 @@ export class TaskWorkflowRepository {
     const session = driver.session();
 
     try {
+      // Same CONTIENE + TIENE_TAREA pair as reviewTask. DISTINCT keeps one status event
+      // and one leader notification per transition.
       const result = await session.run(
         `MATCH (project:Proyecto)-[:TIENE_TAREA|CONTIENE]->(task:Tarea)
          WHERE task.taskId = $taskId OR task.tareaId = $taskId OR task.id = $taskId OR elementId(task) = $taskId
@@ -58,7 +60,7 @@ export class TaskWorkflowRepository {
          OPTIONAL MATCH (actor)-[assignmentOut:ASIGNADO_A]->(task)
          OPTIONAL MATCH (task)-[assignmentIn:ASIGNADO_A]->(actor)
          OPTIONAL MATCH (actor)-[actorMembership:PERTENECE_A]->(project)
-         WITH project,
+         WITH DISTINCT project,
               task,
               actor,
               actorMembership,
@@ -221,11 +223,13 @@ export class TaskWorkflowRepository {
     const nextStatus = input.decision === 'approved' ? 'completada' : 'en progreso';
 
     try {
+      // createTask links each task with both CONTIENE and TIENE_TAREA. Collapse those
+      // rows before any CREATE, or one review persists two events and two notifications.
       const result = await session.run(
         `MATCH (project:Proyecto)-[:TIENE_TAREA|CONTIENE]->(task:Tarea)
          WHERE task.taskId = $taskId OR task.tareaId = $taskId OR task.id = $taskId OR elementId(task) = $taskId
          MATCH (actor:Usuario {userId: $actorUserId})
-         WITH project, task, actor, coalesce(task.status, task.estado) AS previousStatus
+         WITH DISTINCT project, task, actor, coalesce(task.status, task.estado) AS previousStatus
          CALL {
            WITH project
            OPTIONAL MATCH (leader:Usuario)-[leaderMembership:PERTENECE_A]->(project)
@@ -247,6 +251,7 @@ export class TaskWorkflowRepository {
            OPTIONAL MATCH (task)<-[:ASIGNADO_A]-(assignedOut:Usuario)
            OPTIONAL MATCH (task)-[:ASIGNADO_A]->(assignedIn:Usuario)
            RETURN coalesce(assignedOut, assignedIn) AS assigned
+           LIMIT 1
          }
          CALL {
            WITH task, actorIsLeader

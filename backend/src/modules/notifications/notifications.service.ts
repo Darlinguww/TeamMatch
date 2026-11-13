@@ -29,6 +29,13 @@ export class NotificationsService {
          WHERE coalesce(notification.actionable, false) = false
             OR request IS NULL
             OR request.status = 'pending'
+         WITH notification,
+              task,
+              request,
+              head(collect(DISTINCT taskProject)) AS taskProject,
+              head(collect(DISTINCT requestProject)) AS requestProject
+         ORDER BY notification.createdAt DESC
+         LIMIT 50
          RETURN notification.notificationId AS notificationId,
                 notification.type AS type,
                 notification.message AS message,
@@ -46,9 +53,7 @@ export class NotificationsService {
                 coalesce(notification.applicantUserId, request.applicantUserId) AS applicantUserId,
                 coalesce(notification.applicantDisplayName) AS applicantDisplayName,
                 coalesce(notification.roleName, request.roleName) AS roleName,
-                coalesce(notification.actionable, false) AS actionable
-         ORDER BY notification.createdAt DESC
-         LIMIT 50`,
+                coalesce(notification.actionable, false) AS actionable`,
         { userId }
       );
 
