@@ -58,7 +58,7 @@ export class TaskWorkflowRepository {
          OPTIONAL MATCH (actor)-[assignmentOut:ASIGNADO_A]->(task)
          OPTIONAL MATCH (task)-[assignmentIn:ASIGNADO_A]->(actor)
          OPTIONAL MATCH (actor)-[actorMembership:PERTENECE_A]->(project)
-         WITH project,
+         WITH DISTINCT project,
               task,
               actor,
               actorMembership,
@@ -221,11 +221,15 @@ export class TaskWorkflowRepository {
     const nextStatus = input.decision === 'approved' ? 'completada' : 'en progreso';
 
     try {
+      // WHERE inside a writing CALL drops the incoming row after Neo4j applies the write.
+      // A leader reviewing a task assigned to themselves (the task form default) then got 404
+      // while the new status stayed committed. FOREACH keeps that row. DISTINCT collapses the
+      // CONTIENE and TIENE_TAREA edges so the review is written once.
       const result = await session.run(
         `MATCH (project:Proyecto)-[:TIENE_TAREA|CONTIENE]->(task:Tarea)
          WHERE task.taskId = $taskId OR task.tareaId = $taskId OR task.id = $taskId OR elementId(task) = $taskId
          MATCH (actor:Usuario {userId: $actorUserId})
-         WITH project, task, actor, coalesce(task.status, task.estado) AS previousStatus
+         WITH DISTINCT project, task, actor, coalesce(task.status, task.estado) AS previousStatus
          CALL {
            WITH project
            OPTIONAL MATCH (leader:Usuario)-[leaderMembership:PERTENECE_A]->(project)
@@ -247,57 +251,63 @@ export class TaskWorkflowRepository {
            OPTIONAL MATCH (task)<-[:ASIGNADO_A]-(assignedOut:Usuario)
            OPTIONAL MATCH (task)-[:ASIGNADO_A]->(assignedIn:Usuario)
            RETURN coalesce(assignedOut, assignedIn) AS assigned
+           LIMIT 1
          }
          CALL {
            WITH task, actorIsLeader
-           WITH task, actorIsLeader
-           WHERE actorIsLeader
-           SET task.status = $nextStatus,
-               task.estado = $nextStatus,
-               task.updatedAt = $reviewedAt,
-               task.reviewDecision = $decision,
-               task.reviewComment = $comment,
-               task.reviewedAt = $reviewedAt,
-               task.reviewedBy = $actorUserId
-           RETURN count(task) AS tasksReviewed
+           FOREACH (_ IN CASE WHEN actorIsLeader THEN [1] ELSE [] END |
+             SET task.status = $nextStatus,
+                 task.estado = $nextStatus,
+                 task.updatedAt = $reviewedAt,
+                 task.reviewDecision = $decision,
+                 task.reviewComment = $comment,
+                 task.reviewedAt = $reviewedAt,
+                 task.reviewedBy = $actorUserId
+           )
+           RETURN CASE WHEN actorIsLeader THEN 1 ELSE 0 END AS tasksReviewed
          }
          CALL {
            WITH task, actor, actorIsLeader, previousStatus
-           WITH task, actor, actorIsLeader, previousStatus
-           WHERE actorIsLeader
-           CREATE (event:EventoTarea {
-             eventId: $eventId,
-             type: 'TASK_REVIEWED',
-             decision: $decision,
-             previousStatus: previousStatus,
-             newStatus: $nextStatus,
-             createdAt: $reviewedAt,
-             actorUserId: $actorUserId
-           })
-           FOREACH (_ IN CASE WHEN $comment IS NULL THEN [] ELSE [1] END | SET event.comment = $comment)
-           CREATE (task)-[:TIENE_EVENTO]->(event)
-           CREATE (actor)-[:REALIZO]->(event)
-           RETURN count(event) AS reviewEventsCreated
+           FOREACH (_ IN CASE WHEN actorIsLeader THEN [1] ELSE [] END |
+             CREATE (event:EventoTarea {
+               eventId: $eventId,
+               type: 'TASK_REVIEWED',
+               decision: $decision,
+               previousStatus: previousStatus,
+               newStatus: $nextStatus,
+               createdAt: $reviewedAt,
+               actorUserId: $actorUserId
+             })
+             SET event.comment = $comment
+             CREATE (task)-[:TIENE_EVENTO]->(event)
+             CREATE (actor)-[:REALIZO]->(event)
+           )
+           RETURN CASE WHEN actorIsLeader THEN 1 ELSE 0 END AS reviewEventsCreated
          }
          CALL {
            WITH project, task, assigned, actorIsLeader
-           WITH project, task, assigned, actorIsLeader
-           WHERE actorIsLeader AND assigned IS NOT NULL AND assigned.userId <> $actorUserId
-           CREATE (notification:Notificacion {
-             notificationId: $notificationId,
-             type: CASE WHEN $decision = 'approved' THEN 'TASK_APPROVED' ELSE 'TASK_RETURNED' END,
-             message: CASE
-               WHEN $decision = 'approved' THEN 'Tu tarea fue revisada y movida a Completada'
-               ELSE 'Tu tarea fue revisada y devuelta a En progreso'
-             END,
-             read: false,
-             taskId: coalesce(task.taskId, task.tareaId, task.id, elementId(task)),
-             projectId: coalesce(project.projectId, project.proyectoId),
-             createdAt: $reviewedAt
-           })
-           CREATE (assigned)-[:RECIBE]->(notification)
-           CREATE (notification)-[:SOBRE_TAREA]->(task)
-           RETURN count(notification) AS reviewNotificationsCreated
+           WITH project,
+                task,
+                assigned,
+                actorIsLeader,
+                actorIsLeader AND assigned IS NOT NULL AND assigned.userId <> $actorUserId AS notifyAssignee
+           FOREACH (_ IN CASE WHEN notifyAssignee THEN [1] ELSE [] END |
+             CREATE (notification:Notificacion {
+               notificationId: $notificationId,
+               type: CASE WHEN $decision = 'approved' THEN 'TASK_APPROVED' ELSE 'TASK_RETURNED' END,
+               message: CASE
+                 WHEN $decision = 'approved' THEN 'Tu tarea fue revisada y movida a Completada'
+                 ELSE 'Tu tarea fue revisada y devuelta a En progreso'
+               END,
+               read: false,
+               taskId: coalesce(task.taskId, task.tareaId, task.id, elementId(task)),
+               projectId: coalesce(project.projectId, project.proyectoId),
+               createdAt: $reviewedAt
+             })
+             CREATE (assigned)-[:RECIBE]->(notification)
+             CREATE (notification)-[:SOBRE_TAREA]->(task)
+           )
+           RETURN CASE WHEN notifyAssignee THEN 1 ELSE 0 END AS reviewNotificationsCreated
          }
          RETURN coalesce(task.taskId, task.tareaId, task.id, elementId(task)) AS taskId,
                 coalesce(task.title, task.titulo, task.name, task.nombre, '') AS title,
