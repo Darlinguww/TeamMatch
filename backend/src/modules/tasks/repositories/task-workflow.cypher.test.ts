@@ -18,18 +18,17 @@ describe('task workflow cypher cardinality', () => {
     expect(query.indexOf('WITH DISTINCT project,')).toBeLessThan(query.indexOf('SET task.status'));
   });
 
-  it('keeps a review row when the leader is the assignee', () => {
+  it('collapses both project-task edges before a review write', () => {
     const query = methodSource('reviewTask');
 
     expect(query).toContain(
       'WITH DISTINCT project, task, actor, coalesce(task.status, task.estado) AS previousStatus'
     );
-    expect(query).not.toContain('WHERE actorIsLeader AND assigned IS NOT NULL');
-    expect(query).toContain(
-      'actorIsLeader AND assigned IS NOT NULL AND assigned.userId <> $actorUserId AS notifyAssignee'
-    );
-    expect(query).toContain('FOREACH (_ IN CASE WHEN notifyAssignee THEN [1] ELSE [] END |');
-    expect(query).toContain('FOREACH (_ IN CASE WHEN actorIsLeader THEN [1] ELSE [] END |');
+    expect(query).toContain('RETURN coalesce(assignedOut, assignedIn) AS assigned\n           LIMIT 1');
     expect(query.indexOf('WITH DISTINCT project, task, actor')).toBeLessThan(query.indexOf('SET task.status'));
+    expect(query.indexOf('WITH DISTINCT project, task, actor')).toBeLessThan(query.indexOf('CREATE (event:EventoTarea'));
+    expect(query.indexOf('WITH DISTINCT project, task, actor')).toBeLessThan(
+      query.indexOf('CREATE (notification:Notificacion')
+    );
   });
 });
