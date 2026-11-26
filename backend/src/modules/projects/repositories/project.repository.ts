@@ -689,11 +689,12 @@ export class Neo4jProjectRepository implements ProjectRepositoryContract {
   public async createFeedbackRelationship(projectId: string, fromUserId: string, toUserId: string, score: number, comment: string | null, createdAt: string): Promise<void> {
     const session = driver.session();
     try {
+      // MERGE must include proyectoId. A bare (from)-[:EVALUO]->(to) matches every
+      // earlier review between the same people and the following SET overwrites that score.
       await session.run(
         `MATCH (from:Usuario {userId: $fromUserId}), (to:Usuario {userId: $toUserId}), (p:Proyecto {projectId: $projectId})
-         MERGE (from)-[f:EVALUO]->(to)
-         ON CREATE SET f.proyectoId = $projectId,
-                       f.projectId = $projectId,
+         MERGE (from)-[f:EVALUO {proyectoId: $projectId}]->(to)
+         ON CREATE SET f.projectId = $projectId,
                        f.evaluadorId = $fromUserId,
                        f.evaluadoId = $toUserId
          SET f.puntaje = $score,
